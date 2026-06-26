@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   REG_MB_POOL,
   REG_MB_MEGAS,
-  type PokemonSpecies,
 } from "@/lib/pokemon-pool";
 import { fetchPokemon, type PokemonData } from "@/lib/pokeapi";
 
@@ -64,6 +63,8 @@ const DEFAULT_CONFIG: Config = {
   splitForms: true,
 };
 
+const MEGA_CAPABLE_SPECIES = new Set(REG_MB_MEGAS.map((m) => m.baseSlug));
+
 function buildBaseEntries(splitForms: boolean): DraftEntry[] {
   const entries: DraftEntry[] = [];
   for (const sp of REG_MB_POOL) {
@@ -98,27 +99,35 @@ function buildBaseEntries(splitForms: boolean): DraftEntry[] {
   return entries;
 }
 
-function buildMegaEntries(): DraftEntry[] {
-  return REG_MB_MEGAS.map((m, i) => ({
-    id: `m:${i}:${m.baseSlug}`,
-    name: m.name,
-    slug: m.baseSlug,
-    speciesKey: `mega:${m.baseSlug}:${i}`,
-    isMega: true,
-  }));
+function buildNonMegaEntries(splitForms: boolean): DraftEntry[] {
+  return buildBaseEntries(splitForms).filter(
+    (entry) => !MEGA_CAPABLE_SPECIES.has(entry.speciesKey),
+  );
+}
+
+function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
+  return buildBaseEntries(splitForms)
+    .filter((entry) => MEGA_CAPABLE_SPECIES.has(entry.speciesKey))
+    .map((entry) => ({
+      ...entry,
+      id: `m:${entry.id}`,
+      isMega: true,
+    }));
 }
 
 function rollPool(cfg: Config): DraftEntry[] {
-  const baseCount = cfg.players * 6 + cfg.extras - cfg.megas;
-  // Exclude any species that has a mega from the base pool — megas are a
-  // subset that replaces their base form, never duplicates it.
-  const megaSpecies = new Set(REG_MB_MEGAS.map((m) => m.baseSlug));
-  const baseEntries = buildBaseEntries(cfg.splitForms).filter(
-    (e) => !megaSpecies.has(e.speciesKey),
+  const totalNeeded = cfg.players * 6 + cfg.extras;
+  const megaCount = Math.min(cfg.megas, totalNeeded);
+  const nonMegaCount = totalNeeded - megaCount;
+  const nonMegas = shuffle(buildNonMegaEntries(cfg.splitForms)).slice(
+    0,
+    nonMegaCount,
   );
-  const base = shuffle(baseEntries).slice(0, Math.max(0, baseCount));
-  const megas = shuffle(buildMegaEntries()).slice(0, cfg.megas);
-  return shuffle([...base, ...megas]);
+  const megas = shuffle(buildMegaCapableEntries(cfg.splitForms)).slice(
+    0,
+    megaCount,
+  );
+  return shuffle([...nonMegas, ...megas]);
 }
 
 function nextPlayerFor(pickIdx: number, cfg: Config): number {
@@ -138,14 +147,16 @@ function DraftPage() {
 
   const totalSlots = cfg.players * 6;
   const totalNeeded = totalSlots + cfg.extras;
-  const megaMax = Math.min(REG_MB_MEGAS.length, totalNeeded);
+  const megaMax = useMemo(
+    () => Math.min(buildMegaCapableEntries(cfg.splitForms).length, totalNeeded),
+    [cfg.splitForms, totalNeeded],
+  );
   const overCapacity = useMemo(() => {
-    const baseCount = totalNeeded - cfg.megas;
-    const megaSpecies = new Set(REG_MB_MEGAS.map((m) => m.baseSlug));
-    const available = buildBaseEntries(cfg.splitForms).filter(
-      (e) => !megaSpecies.has(e.speciesKey),
-    ).length;
-    return baseCount > available;
+    const megaNeeded = Math.min(cfg.megas, totalNeeded);
+    const nonMegaNeeded = totalNeeded - megaNeeded;
+    const nonMegaAvailable = buildNonMegaEntries(cfg.splitForms).length;
+    const megaAvailable = buildMegaCapableEntries(cfg.splitForms).length;
+    return nonMegaNeeded > nonMegaAvailable || megaNeeded > megaAvailable;
   }, [cfg.splitForms, cfg.megas, totalNeeded]);
 
   // Clamp megas if config changes
@@ -387,7 +398,7 @@ function ConfigPanel({
 
       {overCapacity && (
         <div className="mt-4 rounded-md border border-primary/50 bg-primary/10 px-3 py-2 text-sm text-primary">
-          Pool too large — not enough base Pokémon. Lower players/extras or raise megas.
+          Pool too large — not enough eligible Pokémon for the selected split.
         </div>
       )}
 
