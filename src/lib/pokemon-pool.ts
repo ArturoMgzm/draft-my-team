@@ -1,27 +1,31 @@
-// Pokemon Champions Regulation M-B legal pool (224 entries).
+// Pokemon Champions Regulation M-B legal pool.
 // Source: metavgc.com / pokemon-home.com (Reg M-B, June 17 2026 – Sep 2 2026).
 //
 // `slug` is the PokéAPI identifier used to fetch sprites/types.
-// For Mega forms that PokéAPI doesn't model, we fall back to the base
-// species sprite and flag `isMega` so the UI can label it.
+// Megas are stored separately in REG_MB_MEGAS — sprites still render from
+// the base species per the "show base forms" UI rule.
 
-export type DraftPokemon = {
+export type FormVariant = { name: string; slug: string };
+
+export type PokemonSpecies = {
   name: string;
   slug: string;
-  isMega?: boolean;
+  forms?: FormVariant[];
 };
 
-// Helper for mega entries with no PokéAPI form
-const m = (name: string, baseSlug: string): DraftPokemon => ({
-  name,
-  slug: baseSlug,
-  isMega: true,
-});
+export type MegaEntry = { name: string; baseSlug: string };
 
-export const REG_MB_POOL: DraftPokemon[] = [
+export const REG_MB_POOL: PokemonSpecies[] = [
   { name: "Abomasnow", slug: "abomasnow" },
   { name: "Absol", slug: "absol" },
-  { name: "Aegislash", slug: "aegislash" },
+  {
+    name: "Aegislash",
+    slug: "aegislash",
+    forms: [
+      { name: "Aegislash (Shield)", slug: "aegislash-shield" },
+      { name: "Aegislash (Blade)", slug: "aegislash-blade" },
+    ],
+  },
   { name: "Aerodactyl", slug: "aerodactyl" },
   { name: "Aggron", slug: "aggron" },
   { name: "Alakazam", slug: "alakazam" },
@@ -43,7 +47,14 @@ export const REG_MB_POOL: DraftPokemon[] = [
   { name: "Azumarill", slug: "azumarill" },
   { name: "Banette", slug: "banette" },
   { name: "Barbaracle", slug: "barbaracle" },
-  { name: "Basculegion", slug: "basculegion" },
+  {
+    name: "Basculegion",
+    slug: "basculegion",
+    forms: [
+      { name: "Basculegion (Male)", slug: "basculegion-male" },
+      { name: "Basculegion (Female)", slug: "basculegion-female" },
+    ],
+  },
   { name: "Bastiodon", slug: "bastiodon" },
   { name: "Beartic", slug: "beartic" },
   { name: "Beedrill", slug: "beedrill" },
@@ -129,46 +140,73 @@ export const REG_MB_POOL: DraftPokemon[] = [
   { name: "Lopunny", slug: "lopunny" },
   { name: "Lucario", slug: "lucario" },
   { name: "Luxray", slug: "luxray" },
-  { name: "Lycanroc", slug: "lycanroc" },
+  {
+    name: "Lycanroc",
+    slug: "lycanroc",
+    forms: [
+      { name: "Lycanroc (Midday)", slug: "lycanroc-midday" },
+      { name: "Lycanroc (Midnight)", slug: "lycanroc-midnight" },
+      { name: "Lycanroc (Dusk)", slug: "lycanroc-dusk" },
+    ],
+  },
   { name: "Machamp", slug: "machamp" },
   { name: "Malamar", slug: "malamar" },
   { name: "Mamoswine", slug: "mamoswine" },
   { name: "Manectric", slug: "manectric" },
-  { name: "Maushold", slug: "maushold" },
+  {
+    name: "Maushold",
+    slug: "maushold",
+    forms: [
+      { name: "Maushold (Family of Four)", slug: "maushold-family-of-four" },
+      { name: "Maushold (Family of Three)", slug: "maushold-family-of-three" },
+    ],
+  },
   { name: "Mawile", slug: "mawile" },
   { name: "Medicham", slug: "medicham" },
-  m("Mega Barbaracle", "barbaracle"),
-  { name: "Mega Blaziken", slug: "blaziken-mega", isMega: true },
-  m("Mega Dragalge", "dragalge"),
-  m("Mega Eelektross", "eelektross"),
-  m("Mega Falinks", "falinks"),
-  m("Mega Malamar", "malamar"),
-  { name: "Mega Mawile", slug: "mawile-mega", isMega: true },
-  { name: "Mega Metagross", slug: "metagross-mega", isMega: true },
-  m("Mega Pyroar", "pyroar"),
-  m("Mega Raichu X", "raichu"),
-  m("Mega Raichu Y", "raichu"),
-  { name: "Mega Sceptile", slug: "sceptile-mega", isMega: true },
-  m("Mega Scolipede", "scolipede"),
-  m("Mega Scrafty", "scrafty"),
-  m("Mega Staraptor", "staraptor"),
-  { name: "Mega Swampert", slug: "swampert-mega", isMega: true },
   { name: "Meganium", slug: "meganium" },
   { name: "Meowscarada", slug: "meowscarada" },
-  { name: "Meowstic", slug: "meowstic" },
+  {
+    name: "Meowstic",
+    slug: "meowstic",
+    forms: [
+      { name: "Meowstic (Male)", slug: "meowstic-male" },
+      { name: "Meowstic (Female)", slug: "meowstic-female" },
+    ],
+  },
   { name: "Metagross", slug: "metagross" },
   { name: "Milotic", slug: "milotic" },
   { name: "Mimikyu", slug: "mimikyu" },
-  { name: "Morpeko", slug: "morpeko" },
+  {
+    name: "Morpeko",
+    slug: "morpeko",
+    forms: [
+      { name: "Morpeko (Full Belly)", slug: "morpeko-full-belly" },
+      { name: "Morpeko (Hangry)", slug: "morpeko-hangry" },
+    ],
+  },
   { name: "Mr. Rime", slug: "mr-rime" },
   { name: "Mudsdale", slug: "mudsdale" },
   { name: "Musharna", slug: "musharna" },
-  { name: "Ninetales", slug: "ninetales" },
+  {
+    name: "Ninetales",
+    slug: "ninetales",
+    forms: [
+      { name: "Ninetales (Kantonian)", slug: "ninetales" },
+      { name: "Ninetales (Alolan)", slug: "ninetales-alola" },
+    ],
+  },
   { name: "Noivern", slug: "noivern" },
   { name: "Oranguru", slug: "oranguru" },
   { name: "Orthworm", slug: "orthworm" },
   { name: "Overqwil", slug: "overqwil" },
-  { name: "Palafin", slug: "palafin" },
+  {
+    name: "Palafin",
+    slug: "palafin",
+    forms: [
+      { name: "Palafin (Zero)", slug: "palafin-zero" },
+      { name: "Palafin (Hero)", slug: "palafin-hero" },
+    ],
+  },
   { name: "Pangoro", slug: "pangoro" },
   { name: "Passimian", slug: "passimian" },
   { name: "Patrat", slug: "patrat" },
@@ -187,7 +225,18 @@ export const REG_MB_POOL: DraftPokemon[] = [
   { name: "Reuniclus", slug: "reuniclus" },
   { name: "Rhyperior", slug: "rhyperior" },
   { name: "Roserade", slug: "roserade" },
-  { name: "Rotom", slug: "rotom" },
+  {
+    name: "Rotom",
+    slug: "rotom",
+    forms: [
+      { name: "Rotom", slug: "rotom" },
+      { name: "Rotom (Heat)", slug: "rotom-heat" },
+      { name: "Rotom (Wash)", slug: "rotom-wash" },
+      { name: "Rotom (Frost)", slug: "rotom-frost" },
+      { name: "Rotom (Fan)", slug: "rotom-fan" },
+      { name: "Rotom (Mow)", slug: "rotom-mow" },
+    ],
+  },
   { name: "Runerigus", slug: "runerigus" },
   { name: "Sableye", slug: "sableye" },
   { name: "Salazzle", slug: "salazzle" },
@@ -219,7 +268,15 @@ export const REG_MB_POOL: DraftPokemon[] = [
   { name: "Swampert", slug: "swampert" },
   { name: "Sylveon", slug: "sylveon" },
   { name: "Talonflame", slug: "talonflame" },
-  { name: "Tauros", slug: "tauros" },
+  {
+    name: "Tauros",
+    slug: "tauros",
+    forms: [
+      { name: "Tauros (Combat Paldean)", slug: "tauros-paldea-combat-breed" },
+      { name: "Tauros (Blaze Paldean)", slug: "tauros-paldea-blaze-breed" },
+      { name: "Tauros (Aqua Paldean)", slug: "tauros-paldea-aqua-breed" },
+    ],
+  },
   { name: "Tinkaton", slug: "tinkaton" },
   { name: "Torkoal", slug: "torkoal" },
   { name: "Torterra", slug: "torterra" },
@@ -243,4 +300,23 @@ export const REG_MB_POOL: DraftPokemon[] = [
   { name: "Whimsicott", slug: "whimsicott" },
   { name: "Wyrdeer", slug: "wyrdeer" },
   { name: "Zoroark", slug: "zoroark" },
+];
+
+export const REG_MB_MEGAS: MegaEntry[] = [
+  { name: "Mega Barbaracle", baseSlug: "barbaracle" },
+  { name: "Mega Blaziken", baseSlug: "blaziken" },
+  { name: "Mega Dragalge", baseSlug: "dragalge" },
+  { name: "Mega Eelektross", baseSlug: "eelektross" },
+  { name: "Mega Falinks", baseSlug: "falinks" },
+  { name: "Mega Malamar", baseSlug: "malamar" },
+  { name: "Mega Mawile", baseSlug: "mawile" },
+  { name: "Mega Metagross", baseSlug: "metagross" },
+  { name: "Mega Pyroar", baseSlug: "pyroar" },
+  { name: "Mega Raichu X", baseSlug: "raichu" },
+  { name: "Mega Raichu Y", baseSlug: "raichu" },
+  { name: "Mega Sceptile", baseSlug: "sceptile" },
+  { name: "Mega Scolipede", baseSlug: "scolipede" },
+  { name: "Mega Scrafty", baseSlug: "scrafty" },
+  { name: "Mega Staraptor", baseSlug: "staraptor" },
+  { name: "Mega Swampert", baseSlug: "swampert" },
 ];
