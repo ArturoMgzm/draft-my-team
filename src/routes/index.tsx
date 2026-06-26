@@ -110,7 +110,13 @@ function buildMegaEntries(): DraftEntry[] {
 
 function rollPool(cfg: Config): DraftEntry[] {
   const baseCount = cfg.players * 6 + cfg.extras - cfg.megas;
-  const base = shuffle(buildBaseEntries(cfg.splitForms)).slice(0, Math.max(0, baseCount));
+  // Exclude any species that has a mega from the base pool — megas are a
+  // subset that replaces their base form, never duplicates it.
+  const megaSpecies = new Set(REG_MB_MEGAS.map((m) => m.baseSlug));
+  const baseEntries = buildBaseEntries(cfg.splitForms).filter(
+    (e) => !megaSpecies.has(e.speciesKey),
+  );
+  const base = shuffle(baseEntries).slice(0, Math.max(0, baseCount));
   const megas = shuffle(buildMegaEntries()).slice(0, cfg.megas);
   return shuffle([...base, ...megas]);
 }
@@ -135,7 +141,11 @@ function DraftPage() {
   const megaMax = Math.min(REG_MB_MEGAS.length, totalNeeded);
   const overCapacity = useMemo(() => {
     const baseCount = totalNeeded - cfg.megas;
-    return baseCount > buildBaseEntries(cfg.splitForms).length;
+    const megaSpecies = new Set(REG_MB_MEGAS.map((m) => m.baseSlug));
+    const available = buildBaseEntries(cfg.splitForms).filter(
+      (e) => !megaSpecies.has(e.speciesKey),
+    ).length;
+    return baseCount > available;
   }, [cfg.splitForms, cfg.megas, totalNeeded]);
 
   // Clamp megas if config changes
