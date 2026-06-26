@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { REG_MB_POOL, type DraftPokemon } from "@/lib/pokemon-pool";
 import { fetchPokemon, type PokemonData } from "@/lib/pokeapi";
 
@@ -269,6 +269,3 @@ function TypeBadge({ type }: { type: string }) {
     </span>
   );
 }
-
-// silence unused import warning if useMemo unused
-void useMemo;
