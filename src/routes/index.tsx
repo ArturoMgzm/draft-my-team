@@ -389,7 +389,16 @@ function ConfigPanel({
           min={0}
           max={megaMax}
           onChange={(v) => setCfg((c) => ({ ...c, megas: v }))}
-          hint={`Max ${megaMax} (controls power level)`}
+          hint={`Max ${megaMax}`}
+        />
+        <ToggleField
+          label="Mega count"
+          value={cfg.megaMode}
+          options={[
+            { value: "exact", label: "Exactly", hint: "Always X megas in pool" },
+            { value: "atleast", label: "At least", hint: "X guaranteed, more may roll" },
+          ]}
+          onChange={(v) => setCfg((c) => ({ ...c, megaMode: v as MegaMode }))}
         />
         <ToggleField
           label="Pick order"
