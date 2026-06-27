@@ -64,10 +64,6 @@ const MEGA_CAPABLE_SPECIES = new Set(
   REG_MB_POOL.filter((s) => s.mega).map((s) => s.slug),
 );
 
-const MEGA_BY_SPECIES = new Map(
-  REG_MB_POOL.filter((s) => s.mega).map((s) => [s.slug, s.mega!]),
-);
-
 function buildBaseEntries(splitForms: boolean): DraftEntry[] {
   const entries: DraftEntry[] = [];
   for (const sp of REG_MB_POOL) {
