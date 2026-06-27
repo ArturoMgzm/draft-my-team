@@ -124,7 +124,6 @@ function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
   void splitForms;
   return entries;
 }
-}
 
 function rollPool(cfg: Config): DraftEntry[] {
   const totalNeeded = cfg.players * 6 + cfg.extras;
