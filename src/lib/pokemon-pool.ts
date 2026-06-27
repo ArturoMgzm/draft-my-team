@@ -133,7 +133,7 @@ export const REG_MB_POOL: PokemonSpecies[] = [
   { name: "Gliscor", slug: "gliscor" },
   { name: "Golurk", slug: "golurk", mega: { name: "Mega Golurk", slug: "golurk-mega" } },
   { name: "Goodra", slug: "goodra" },
-  { name: "Gourgeist", slug: "gourgeist" },
+  { name: "Gourgeist", slug: "gourgeist-average" },
   { name: "Greninja", slug: "greninja", mega: { name: "Mega Greninja", slug: "greninja-mega" } },
   { name: "Grimmsnarl", slug: "grimmsnarl" },
   { name: "Gyarados", slug: "gyarados", mega: { name: "Mega Gyarados", slug: "gyarados-mega" } },
