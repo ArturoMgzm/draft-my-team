@@ -583,14 +583,6 @@ function TeamsSidebar({
 }
 
 function TeamSlot({ entry, onClick }: { entry: DraftEntry; onClick: () => void }) {
-  const [data, setData] = useState<PokemonData | null>(null);
-  useEffect(() => {
-    let active = true;
-    fetchPokemon(entry.slug).then((d) => active && setData(d));
-    return () => {
-      active = false;
-    };
-  }, [entry.slug]);
   return (
     <button
       type="button"
@@ -601,20 +593,14 @@ function TeamSlot({ entry, onClick }: { entry: DraftEntry; onClick: () => void }
       title={`${entry.name} — click to undo`}
       className="group relative h-full w-full"
     >
-      {data?.sprite ? (
-        <img
-          src={data.sprite}
-          alt={entry.name}
-          loading="lazy"
-          className="h-full w-full object-contain transition group-hover:opacity-50"
-        />
-      ) : (
-        <div className="h-full w-full animate-pulse rounded bg-muted" />
-      )}
+      <HoverSprite entry={entry} className="h-full w-full object-contain transition group-hover:opacity-50" />
       {entry.isMega && (
         <span className="absolute bottom-0 right-0 rounded-sm bg-accent px-0.5 text-[7px] font-bold uppercase text-accent-foreground">
           M
         </span>
+      )}
+      {entry.shiny && (
+        <span className="absolute left-0 top-0 text-[9px]" title="Shiny!">✨</span>
       )}
       <span className="pointer-events-none absolute inset-0 grid place-content-center text-[10px] font-bold text-primary opacity-0 group-hover:opacity-100">
         ✕
@@ -682,16 +668,10 @@ function PoolCard({
   disabled: boolean;
   onClick: () => void;
 }) {
-  const [data, setData] = useState<PokemonData | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
+  const [types, setTypes] = useState<string[] | null>(null);
   useEffect(() => {
     let active = true;
-    fetchPokemon(entry.slug).then((d) => {
-      if (!active) return;
-      setData(d);
-      setLoaded(true);
-    });
+    fetchPokemon(entry.slug).then((d) => active && setTypes(d?.types ?? []));
     return () => {
       active = false;
     };
@@ -718,22 +698,26 @@ function PoolCard({
           Multi
         </span>
       )}
+      {entry.shiny && (
+        <span
+          className="absolute right-1.5 bottom-1.5 text-sm"
+          title="Shiny — 1 in 8000!"
+        >
+          ✨
+        </span>
+      )}
       <div className="flex aspect-square w-full items-center justify-center">
-        {data?.sprite ? (
-          <img
-            src={data.sprite}
-            alt={entry.name}
-            loading="lazy"
-            className="h-full w-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.4)] transition-transform group-hover:scale-105"
-          />
-        ) : (
-          <div className="h-full w-full animate-pulse rounded-lg bg-muted" />
-        )}
+        <HoverSprite
+          entry={entry}
+          className="h-full w-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.4)] transition-transform group-hover:scale-105"
+        />
       </div>
       <div className="mt-1 w-full text-center">
-        <div className="truncate text-xs font-bold">{entry.name}</div>
+        <div className="truncate text-xs font-bold">
+          {entry.name}
+        </div>
         <div className="mt-1 flex flex-wrap justify-center gap-1">
-          {loaded && data?.types.map((t) => <TypeBadge key={t} type={t} />)}
+          {types?.map((t) => <TypeBadge key={t} type={t} />)}
         </div>
       </div>
     </button>
