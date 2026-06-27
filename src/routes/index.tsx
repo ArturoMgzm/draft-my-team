@@ -1,9 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  REG_MB_POOL,
-  REG_MB_MEGAS,
-} from "@/lib/pokemon-pool";
+import { REG_MB_POOL } from "@/lib/pokemon-pool";
 import { fetchPokemon, type PokemonData } from "@/lib/pokeapi";
 
 export const Route = createFileRoute("/")({
@@ -63,7 +60,13 @@ const DEFAULT_CONFIG: Config = {
   splitForms: true,
 };
 
-const MEGA_CAPABLE_SPECIES = new Set(REG_MB_MEGAS.map((m) => m.baseSlug));
+const MEGA_CAPABLE_SPECIES = new Set(
+  REG_MB_POOL.filter((s) => s.mega).map((s) => s.slug),
+);
+
+const MEGA_BY_SPECIES = new Map(
+  REG_MB_POOL.filter((s) => s.mega).map((s) => [s.slug, s.mega!]),
+);
 
 function buildBaseEntries(splitForms: boolean): DraftEntry[] {
   const entries: DraftEntry[] = [];
@@ -106,13 +109,21 @@ function buildNonMegaEntries(splitForms: boolean): DraftEntry[] {
 }
 
 function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
-  return buildBaseEntries(splitForms)
-    .filter((entry) => MEGA_CAPABLE_SPECIES.has(entry.speciesKey))
-    .map((entry) => ({
-      ...entry,
-      id: `m:${entry.id}`,
+  const entries: DraftEntry[] = [];
+  for (const sp of REG_MB_POOL) {
+    if (!sp.mega) continue;
+    entries.push({
+      id: `m:${sp.slug}`,
+      name: sp.mega.name,
+      slug: sp.slug, // sprite from base form
+      speciesKey: sp.slug,
       isMega: true,
-    }));
+    });
+  }
+  // splitForms parameter retained for signature parity; megas are species-level.
+  void splitForms;
+  return entries;
+}
 }
 
 function rollPool(cfg: Config): DraftEntry[] {
