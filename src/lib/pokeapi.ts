@@ -2,13 +2,14 @@
 // resources whenever you request them" guideline.
 // https://pokeapi.co/docs/v2#fairuse
 
-const CACHE_PREFIX = "pokeapi:v1:";
+const CACHE_PREFIX = "pokeapi:v2:";
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export type PokemonData = {
   id: number;
   name: string;
   sprite: string | null;
+  shinySprite: string | null;
   types: string[];
 };
 
@@ -58,9 +59,16 @@ export function fetchPokemon(slug: string): Promise<PokemonData | null> {
         name: string;
         sprites: {
           front_default: string | null;
+          front_shiny: string | null;
           other?: {
-            "official-artwork"?: { front_default: string | null };
-            home?: { front_default: string | null };
+            "official-artwork"?: {
+              front_default: string | null;
+              front_shiny: string | null;
+            };
+            home?: {
+              front_default: string | null;
+              front_shiny: string | null;
+            };
           };
         };
         types: { type: { name: string } }[];
@@ -72,6 +80,10 @@ export function fetchPokemon(slug: string): Promise<PokemonData | null> {
           json.sprites.other?.["official-artwork"]?.front_default ??
           json.sprites.other?.home?.front_default ??
           json.sprites.front_default,
+        shinySprite:
+          json.sprites.other?.["official-artwork"]?.front_shiny ??
+          json.sprites.other?.home?.front_shiny ??
+          json.sprites.front_shiny,
         types: json.types.map((t) => t.type.name),
       };
       writeCache(slug, data);

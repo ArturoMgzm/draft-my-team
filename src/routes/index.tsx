@@ -38,16 +38,20 @@ type DraftEntry = {
   speciesKey: string; // base species slug — used for per-player form constraint
   isMega?: boolean;
   multiForm?: boolean; // species with forms, unified mode
+  altSlugs?: string[]; // alternate sprites shown on hover (mega slug, or sibling forms)
+  shiny?: boolean; // 1-in-8000 lucky roll
 };
 
 type Pick = { entryId: string; playerIdx: number };
 
 type PickOrder = "sequential" | "snake";
+type MegaMode = "exact" | "atleast";
 
 type Config = {
   players: number;
   extras: number;
   megas: number;
+  megaMode: MegaMode;
   pickOrder: PickOrder;
   splitForms: boolean;
 };
@@ -56,6 +60,7 @@ const DEFAULT_CONFIG: Config = {
   players: 2,
   extras: 4,
   megas: 2,
+  megaMode: "exact",
   pickOrder: "snake",
   splitForms: true,
 };
@@ -84,6 +89,7 @@ function buildBaseEntries(splitForms: boolean): DraftEntry[] {
           slug: sp.slug,
           speciesKey: sp.slug,
           multiForm: true,
+          altSlugs: sp.forms.map((f) => f.slug),
         });
       }
     } else {
@@ -114,6 +120,7 @@ function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
       slug: sp.slug, // sprite from base form
       speciesKey: sp.slug,
       isMega: true,
+      altSlugs: [sp.mega.slug],
     });
   }
   // splitForms parameter retained for signature parity; megas are species-level.
@@ -123,17 +130,26 @@ function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
 
 function rollPool(cfg: Config): DraftEntry[] {
   const totalNeeded = cfg.players * 6 + cfg.extras;
-  const megaCount = Math.min(cfg.megas, totalNeeded);
-  const nonMegaCount = totalNeeded - megaCount;
-  const nonMegas = shuffle(buildNonMegaEntries(cfg.splitForms)).slice(
-    0,
-    nonMegaCount,
-  );
-  const megas = shuffle(buildMegaCapableEntries(cfg.splitForms)).slice(
-    0,
-    megaCount,
-  );
-  return shuffle([...nonMegas, ...megas]);
+  const guaranteedMegas = Math.min(cfg.megas, totalNeeded);
+  const megaPool = shuffle(buildMegaCapableEntries(cfg.splitForms));
+  const nonMegaPool = shuffle(buildNonMegaEntries(cfg.splitForms));
+  let chosen: DraftEntry[];
+  if (cfg.megaMode === "exact") {
+    const nonMegas = nonMegaPool.slice(0, totalNeeded - guaranteedMegas);
+    const megas = megaPool.slice(0, guaranteedMegas);
+    chosen = [...nonMegas, ...megas];
+  } else {
+    // at least X megas: lock in X megas, fill the rest from the combined pool
+    const lockedMegas = megaPool.slice(0, guaranteedMegas);
+    const rest = shuffle([
+      ...megaPool.slice(guaranteedMegas),
+      ...nonMegaPool,
+    ]).slice(0, totalNeeded - guaranteedMegas);
+    chosen = [...lockedMegas, ...rest];
+  }
+  // 1-in-8000 shiny roll per entry
+  chosen = chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 8000 }));
+  return shuffle(chosen);
 }
 
 function nextPlayerFor(pickIdx: number, cfg: Config): number {
@@ -159,11 +175,14 @@ function DraftPage() {
   );
   const overCapacity = useMemo(() => {
     const megaNeeded = Math.min(cfg.megas, totalNeeded);
-    const nonMegaNeeded = totalNeeded - megaNeeded;
     const nonMegaAvailable = buildNonMegaEntries(cfg.splitForms).length;
     const megaAvailable = buildMegaCapableEntries(cfg.splitForms).length;
-    return nonMegaNeeded > nonMegaAvailable || megaNeeded > megaAvailable;
-  }, [cfg.splitForms, cfg.megas, totalNeeded]);
+    if (megaNeeded > megaAvailable) return true;
+    if (cfg.megaMode === "exact") {
+      return totalNeeded - megaNeeded > nonMegaAvailable;
+    }
+    return totalNeeded > nonMegaAvailable + megaAvailable;
+  }, [cfg.splitForms, cfg.megas, cfg.megaMode, totalNeeded]);
 
   // Clamp megas if config changes
   useEffect(() => {
@@ -370,7 +389,16 @@ function ConfigPanel({
           min={0}
           max={megaMax}
           onChange={(v) => setCfg((c) => ({ ...c, megas: v }))}
-          hint={`Max ${megaMax} (controls power level)`}
+          hint={`Max ${megaMax}`}
+        />
+        <ToggleField
+          label="Mega count"
+          value={cfg.megaMode}
+          options={[
+            { value: "exact", label: "Exactly", hint: "Always X megas in pool" },
+            { value: "atleast", label: "At least", hint: "X guaranteed, more may roll" },
+          ]}
+          onChange={(v) => setCfg((c) => ({ ...c, megaMode: v as MegaMode }))}
         />
         <ToggleField
           label="Pick order"
@@ -555,14 +583,6 @@ function TeamsSidebar({
 }
 
 function TeamSlot({ entry, onClick }: { entry: DraftEntry; onClick: () => void }) {
-  const [data, setData] = useState<PokemonData | null>(null);
-  useEffect(() => {
-    let active = true;
-    fetchPokemon(entry.slug).then((d) => active && setData(d));
-    return () => {
-      active = false;
-    };
-  }, [entry.slug]);
   return (
     <button
       type="button"
@@ -573,20 +593,14 @@ function TeamSlot({ entry, onClick }: { entry: DraftEntry; onClick: () => void }
       title={`${entry.name} — click to undo`}
       className="group relative h-full w-full"
     >
-      {data?.sprite ? (
-        <img
-          src={data.sprite}
-          alt={entry.name}
-          loading="lazy"
-          className="h-full w-full object-contain transition group-hover:opacity-50"
-        />
-      ) : (
-        <div className="h-full w-full animate-pulse rounded bg-muted" />
-      )}
+      <HoverSprite entry={entry} className="h-full w-full object-contain transition group-hover:opacity-50" />
       {entry.isMega && (
         <span className="absolute bottom-0 right-0 rounded-sm bg-accent px-0.5 text-[7px] font-bold uppercase text-accent-foreground">
           M
         </span>
+      )}
+      {entry.shiny && (
+        <span className="absolute left-0 top-0 text-[9px]" title="Shiny!">✨</span>
       )}
       <span className="pointer-events-none absolute inset-0 grid place-content-center text-[10px] font-bold text-primary opacity-0 group-hover:opacity-100">
         ✕
@@ -654,16 +668,10 @@ function PoolCard({
   disabled: boolean;
   onClick: () => void;
 }) {
-  const [data, setData] = useState<PokemonData | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
+  const [types, setTypes] = useState<string[] | null>(null);
   useEffect(() => {
     let active = true;
-    fetchPokemon(entry.slug).then((d) => {
-      if (!active) return;
-      setData(d);
-      setLoaded(true);
-    });
+    fetchPokemon(entry.slug).then((d) => active && setTypes(d?.types ?? []));
     return () => {
       active = false;
     };
@@ -690,22 +698,26 @@ function PoolCard({
           Multi
         </span>
       )}
+      {entry.shiny && (
+        <span
+          className="absolute right-1.5 bottom-1.5 text-sm"
+          title="Shiny — 1 in 8000!"
+        >
+          ✨
+        </span>
+      )}
       <div className="flex aspect-square w-full items-center justify-center">
-        {data?.sprite ? (
-          <img
-            src={data.sprite}
-            alt={entry.name}
-            loading="lazy"
-            className="h-full w-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.4)] transition-transform group-hover:scale-105"
-          />
-        ) : (
-          <div className="h-full w-full animate-pulse rounded-lg bg-muted" />
-        )}
+        <HoverSprite
+          entry={entry}
+          className="h-full w-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.4)] transition-transform group-hover:scale-105"
+        />
       </div>
       <div className="mt-1 w-full text-center">
-        <div className="truncate text-xs font-bold">{entry.name}</div>
+        <div className="truncate text-xs font-bold">
+          {entry.name}
+        </div>
         <div className="mt-1 flex flex-wrap justify-center gap-1">
-          {loaded && data?.types.map((t) => <TypeBadge key={t} type={t} />)}
+          {types?.map((t) => <TypeBadge key={t} type={t} />)}
         </div>
       </div>
     </button>
@@ -775,5 +787,77 @@ function TypeBadge({ type }: { type: string }) {
     >
       {type}
     </span>
+  );
+}
+
+function HoverSprite({
+  entry,
+  className,
+}: {
+  entry: DraftEntry;
+  className?: string;
+}) {
+  const slugs = useMemo(
+    () => [entry.slug, ...(entry.altSlugs ?? [])],
+    [entry.slug, entry.altSlugs],
+  );
+  const [datas, setDatas] = useState<(PokemonData | null)[]>(() =>
+    slugs.map(() => null),
+  );
+  const [idx, setIdx] = useState(0);
+  const [hover, setHover] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setDatas(slugs.map(() => null));
+    Promise.all(slugs.map((s) => fetchPokemon(s))).then((res) => {
+      if (active) setDatas(res);
+    });
+    return () => {
+      active = false;
+    };
+  }, [slugs]);
+
+  useEffect(() => {
+    if (!hover || slugs.length <= 1) return;
+    const id = window.setInterval(() => {
+      setIdx((i) => (i + 1) % slugs.length);
+    }, 700);
+    return () => window.clearInterval(id);
+  }, [hover, slugs.length]);
+
+  useEffect(() => {
+    if (!hover) setIdx(0);
+  }, [hover]);
+
+  const data = datas[idx] ?? datas[0];
+  const src = entry.shiny
+    ? data?.shinySprite ?? data?.sprite ?? null
+    : data?.sprite ?? null;
+  const label =
+    idx === 0 ? entry.name : slugs[idx].replace(/-/g, " ");
+
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="relative h-full w-full"
+    >
+      {src ? (
+        <img
+          src={src}
+          alt={label}
+          loading="lazy"
+          className={className}
+        />
+      ) : (
+        <div className="h-full w-full animate-pulse rounded bg-muted" />
+      )}
+      {hover && slugs.length > 1 && (
+        <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-background/80 px-1 text-[9px] font-semibold capitalize text-foreground">
+          {label}
+        </span>
+      )}
+    </div>
   );
 }
