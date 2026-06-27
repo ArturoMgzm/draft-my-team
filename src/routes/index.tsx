@@ -38,16 +38,20 @@ type DraftEntry = {
   speciesKey: string; // base species slug — used for per-player form constraint
   isMega?: boolean;
   multiForm?: boolean; // species with forms, unified mode
+  altSlugs?: string[]; // alternate sprites shown on hover (mega slug, or sibling forms)
+  shiny?: boolean; // 1-in-8000 lucky roll
 };
 
 type Pick = { entryId: string; playerIdx: number };
 
 type PickOrder = "sequential" | "snake";
+type MegaMode = "exact" | "atleast";
 
 type Config = {
   players: number;
   extras: number;
   megas: number;
+  megaMode: MegaMode;
   pickOrder: PickOrder;
   splitForms: boolean;
 };
@@ -56,6 +60,7 @@ const DEFAULT_CONFIG: Config = {
   players: 2,
   extras: 4,
   megas: 2,
+  megaMode: "exact",
   pickOrder: "snake",
   splitForms: true,
 };
@@ -84,6 +89,7 @@ function buildBaseEntries(splitForms: boolean): DraftEntry[] {
           slug: sp.slug,
           speciesKey: sp.slug,
           multiForm: true,
+          altSlugs: sp.forms.map((f) => f.slug),
         });
       }
     } else {
@@ -114,6 +120,7 @@ function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
       slug: sp.slug, // sprite from base form
       speciesKey: sp.slug,
       isMega: true,
+      altSlugs: [sp.mega.slug],
     });
   }
   // splitForms parameter retained for signature parity; megas are species-level.
@@ -123,17 +130,26 @@ function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
 
 function rollPool(cfg: Config): DraftEntry[] {
   const totalNeeded = cfg.players * 6 + cfg.extras;
-  const megaCount = Math.min(cfg.megas, totalNeeded);
-  const nonMegaCount = totalNeeded - megaCount;
-  const nonMegas = shuffle(buildNonMegaEntries(cfg.splitForms)).slice(
-    0,
-    nonMegaCount,
-  );
-  const megas = shuffle(buildMegaCapableEntries(cfg.splitForms)).slice(
-    0,
-    megaCount,
-  );
-  return shuffle([...nonMegas, ...megas]);
+  const guaranteedMegas = Math.min(cfg.megas, totalNeeded);
+  const megaPool = shuffle(buildMegaCapableEntries(cfg.splitForms));
+  const nonMegaPool = shuffle(buildNonMegaEntries(cfg.splitForms));
+  let chosen: DraftEntry[];
+  if (cfg.megaMode === "exact") {
+    const nonMegas = nonMegaPool.slice(0, totalNeeded - guaranteedMegas);
+    const megas = megaPool.slice(0, guaranteedMegas);
+    chosen = [...nonMegas, ...megas];
+  } else {
+    // at least X megas: lock in X megas, fill the rest from the combined pool
+    const lockedMegas = megaPool.slice(0, guaranteedMegas);
+    const rest = shuffle([
+      ...megaPool.slice(guaranteedMegas),
+      ...nonMegaPool,
+    ]).slice(0, totalNeeded - guaranteedMegas);
+    chosen = [...lockedMegas, ...rest];
+  }
+  // 1-in-8000 shiny roll per entry
+  chosen = chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 8000 }));
+  return shuffle(chosen);
 }
 
 function nextPlayerFor(pickIdx: number, cfg: Config): number {
