@@ -175,11 +175,14 @@ function DraftPage() {
   );
   const overCapacity = useMemo(() => {
     const megaNeeded = Math.min(cfg.megas, totalNeeded);
-    const nonMegaNeeded = totalNeeded - megaNeeded;
     const nonMegaAvailable = buildNonMegaEntries(cfg.splitForms).length;
     const megaAvailable = buildMegaCapableEntries(cfg.splitForms).length;
-    return nonMegaNeeded > nonMegaAvailable || megaNeeded > megaAvailable;
-  }, [cfg.splitForms, cfg.megas, totalNeeded]);
+    if (megaNeeded > megaAvailable) return true;
+    if (cfg.megaMode === "exact") {
+      return totalNeeded - megaNeeded > nonMegaAvailable;
+    }
+    return totalNeeded > nonMegaAvailable + megaAvailable;
+  }, [cfg.splitForms, cfg.megas, cfg.megaMode, totalNeeded]);
 
   // Clamp megas if config changes
   useEffect(() => {
