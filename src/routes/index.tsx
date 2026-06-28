@@ -114,19 +114,30 @@ function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
   const entries: DraftEntry[] = [];
   for (const sp of REG_MB_POOL) {
     if (!sp.mega) continue;
+    // In split-forms mode, certain multi-form species can only mega from one
+    // specific form. Override the sprite slug so the card shows that form.
+    let spriteSlug = sp.slug;
+    if (splitForms && sp.forms && sp.forms.length > 0) {
+      const override = MEGA_FORM_OVERRIDES[sp.slug];
+      if (override) spriteSlug = override;
+    }
     entries.push({
       id: `m:${sp.slug}`,
-      name: sp.mega.name,
-      slug: sp.slug, // sprite from base form
+      name: sp.name, // base species name; mega badge denotes mega status
+      slug: spriteSlug,
       speciesKey: sp.slug,
       isMega: true,
       altSlugs: [sp.mega.slug],
     });
   }
-  // splitForms parameter retained for signature parity; megas are species-level.
-  void splitForms;
   return entries;
 }
+
+// Split-forms mode: only this form of the species can mega evolve.
+const MEGA_FORM_OVERRIDES: Record<string, string> = {
+  floette: "floette-eternal",
+  slowbro: "slowbro",
+};
 
 function rollPool(cfg: Config): DraftEntry[] {
   const totalNeeded = cfg.players * 6 + cfg.extras;
@@ -400,15 +411,17 @@ function ConfigPanel({
           ]}
           onChange={(v) => setCfg((c) => ({ ...c, megaMode: v as MegaMode }))}
         />
-        <ToggleField
-          label="Pick order"
-          value={cfg.pickOrder}
-          options={[
-            { value: "sequential", label: "Sequential", hint: "1,2,3,1,2,3…" },
-            { value: "snake", label: "Snake", hint: "1,2,3,3,2,1…" },
-          ]}
-          onChange={(v) => setCfg((c) => ({ ...c, pickOrder: v as PickOrder }))}
-        />
+        <div className="sm:col-span-2">
+          <ToggleField
+            label="Pick order"
+            value={cfg.pickOrder}
+            options={[
+              { value: "sequential", label: "Sequential", hint: "1,2,3,1,2,3…" },
+              { value: "snake", label: "Snake", hint: "1,2,3,3,2,1…" },
+            ]}
+            onChange={(v) => setCfg((c) => ({ ...c, pickOrder: v as PickOrder }))}
+          />
+        </div>
         <div className="sm:col-span-2">
           <ToggleField
             label="Pokémon forms"
@@ -822,7 +835,7 @@ function HoverSprite({
     if (!hover || slugs.length <= 1) return;
     const id = window.setInterval(() => {
       setIdx((i) => (i + 1) % slugs.length);
-    }, 700);
+    }, 1200);
     return () => window.clearInterval(id);
   }, [hover, slugs.length]);
 
@@ -830,12 +843,10 @@ function HoverSprite({
     if (!hover) setIdx(0);
   }, [hover]);
 
-  const data = datas[idx] ?? datas[0];
-  const src = entry.shiny
-    ? data?.shinySprite ?? data?.sprite ?? null
-    : data?.sprite ?? null;
-  const label =
-    idx === 0 ? entry.name : slugs[idx].replace(/-/g, " ");
+  const pickSrc = (d: PokemonData | null) =>
+    entry.shiny ? d?.shinySprite ?? d?.sprite ?? null : d?.sprite ?? null;
+  const label = idx === 0 ? entry.name : slugs[idx].replace(/-/g, " ");
+  const anyLoaded = datas.some((d) => d);
 
   return (
     <div
@@ -843,18 +854,28 @@ function HoverSprite({
       onMouseLeave={() => setHover(false)}
       className="relative h-full w-full"
     >
-      {src ? (
-        <img
-          src={src}
-          alt={label}
-          loading="lazy"
-          className={className}
-        />
-      ) : (
+      {!anyLoaded && (
         <div className="h-full w-full animate-pulse rounded bg-muted" />
       )}
+      {datas.map((d, i) => {
+        const src = pickSrc(d);
+        if (!src) return null;
+        const visible = i === idx;
+        return (
+          <img
+            key={slugs[i]}
+            src={src}
+            alt={i === idx ? label : ""}
+            loading="lazy"
+            aria-hidden={!visible}
+            className={`${className ?? ""} absolute inset-0 transition-opacity duration-500 ease-in-out ${
+              visible ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        );
+      })}
       {hover && slugs.length > 1 && (
-        <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-background/80 px-1 text-[9px] font-semibold capitalize text-foreground">
+        <span className="pointer-events-none absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-background/80 px-1 text-[9px] font-semibold capitalize text-foreground">
           {label}
         </span>
       )}
