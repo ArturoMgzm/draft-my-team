@@ -51,7 +51,7 @@ export const REG_MB_POOL: PokemonSpecies[] = [
   },
   { name: "Azumarill", slug: "azumarill" },
   { name: "Banette", slug: "banette", mega: { name: "Mega Banette", slug: "banette-mega" } },
-  { name: "Barbaracle", slug: "barbaracle", mega: { name: "Mega Barbaracle", slug: "ampharos-barbaracle" } },
+  { name: "Barbaracle", slug: "barbaracle", mega: { name: "Mega Barbaracle", slug: "barbaracle-mega" } },
   {
     name: "Basculegion",
     slug: "basculegion-male",
