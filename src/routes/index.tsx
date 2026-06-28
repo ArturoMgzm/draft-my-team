@@ -39,7 +39,7 @@ type DraftEntry = {
   isMega?: boolean;
   multiForm?: boolean; // species with forms, unified mode
   altSlugs?: string[]; // alternate sprites shown on hover (mega slug, or sibling forms)
-  shiny?: boolean; // 1-in-8000 lucky roll
+  shiny?: boolean; // 1-in-4096 lucky roll
 };
 
 type Pick = { entryId: string; playerIdx: number };
@@ -158,8 +158,8 @@ function rollPool(cfg: Config): DraftEntry[] {
     ]).slice(0, totalNeeded - guaranteedMegas);
     chosen = [...lockedMegas, ...rest];
   }
-  // 1-in-8000 shiny roll per entry
-  chosen = chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 8000 }));
+  // 1-in-4096 shiny roll per entry
+  chosen = chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 4096 }));
   return shuffle(chosen);
 }
 
@@ -714,7 +714,7 @@ function PoolCard({
       {entry.shiny && (
         <span
           className="absolute right-1.5 bottom-1.5 text-sm"
-          title="Shiny — 1 in 8000!"
+          title="Shiny — 1 in 4096!"
         >
           ✨
         </span>
