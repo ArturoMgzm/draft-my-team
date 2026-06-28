@@ -411,15 +411,17 @@ function ConfigPanel({
           ]}
           onChange={(v) => setCfg((c) => ({ ...c, megaMode: v as MegaMode }))}
         />
-        <ToggleField
-          label="Pick order"
-          value={cfg.pickOrder}
-          options={[
-            { value: "sequential", label: "Sequential", hint: "1,2,3,1,2,3…" },
-            { value: "snake", label: "Snake", hint: "1,2,3,3,2,1…" },
-          ]}
-          onChange={(v) => setCfg((c) => ({ ...c, pickOrder: v as PickOrder }))}
-        />
+        <div className="sm:col-span-2">
+          <ToggleField
+            label="Pick order"
+            value={cfg.pickOrder}
+            options={[
+              { value: "sequential", label: "Sequential", hint: "1,2,3,1,2,3…" },
+              { value: "snake", label: "Snake", hint: "1,2,3,3,2,1…" },
+            ]}
+            onChange={(v) => setCfg((c) => ({ ...c, pickOrder: v as PickOrder }))}
+          />
+        </div>
         <div className="sm:col-span-2">
           <ToggleField
             label="Pokémon forms"
