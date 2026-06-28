@@ -1,62 +1,45 @@
-## Pokémon Champions Draft — v2 Plan
+## 1. Shiny polish (sprite border + sound)
 
-A refactor of the single-roll randomizer into an interactive shared-pool drafter with per-player teams, pick history, and richer form/mega controls.
+**Visual**
+- Add a `shiny` variant to `PoolCard` and `TeamSlot` in `src/routes/index.tsx`: an animated gradient ring (gold → cyan → magenta) plus a soft outer glow. The existing ✨ badge stays.
+- Add `@keyframes shiny-shimmer` and a `.shiny-frame` utility in `src/styles.css` (rotating conic-gradient border, ~3s loop, `prefers-reduced-motion` falls back to a static gold ring).
+- Wrap the sprite in a dedicated frame div so the shimmer doesn't fight the type-color background already on the card.
 
-### 1. Data model changes (`src/lib/pokemon-pool.ts`)
+**Sound**
+- Add a short royalty-free sparkle SFX uploaded via `lovable-assets` → `src/assets/shiny.mp3.asset.json` (CC0 chime, ~1s; bundling the actual game jingle would conflict with the fan-project disclaimer in section 2).
+- New `src/lib/shiny-sound.ts`: lazy `HTMLAudioElement` singleton, exports `playShinyChime()`. Respects a `shinyMuted` flag in `localStorage` and ignores repeat calls within 1.5s so a roll containing multiple shinies chimes exactly once.
+- Call `playShinyChime()` from `rollPool`'s caller (`startDraft`) after state commits, only when at least one entry has `shiny: true`.
+- Header in `src/routes/index.tsx` gets a small 🔊 / 🔇 toggle button persisted to `localStorage`.
 
-- Drop inline mega entries from `REG_MB_POOL`. Keep one entry per base species.
-- Add an optional `forms?: { name: string; slug: string }[]` field for species with notable variants. Seed entries for: Ninetales (Kantonian/Alolan), Meowstic (Male/Female), Lycanroc (Midday/Midnight/Dusk), Basculegion (Male/Female), Tauros (Combat/Blaze/Aqua Paldean), Rotom (Normal/Heat/Wash/Frost/Fan/Mow), Maushold (Family of Three/Four), Palafin (Zero/Hero), Aegislash (Shield/Blade), Morpeko (Full Belly/Hangry).
-- Export a separate `REG_MB_MEGAS: { name: string; baseSlug: string }[]` list (same set as today's mega entries) — sprites still pulled from base slug per the “show base forms” rule, but tagged `isMega: true`.
+## 2. Legal disclaimers + publish metadata
 
-### 2. Configuration panel (pre-roll)
+**Footer + dedicated legal page**
+- Update the footer in `src/routes/index.tsx` to: "Pokémon and Pokémon character names are trademarks of Nintendo, Game Freak, and The Pokémon Company. This is an unofficial fan project, not affiliated with or endorsed by them. Pokémon data and sprites via PokéAPI." with a link to `/legal`.
+- New route `src/routes/legal.tsx` covering: fan-project status, non-commercial intent, trademark acknowledgements (Nintendo / Game Freak / TPC / Creatures Inc.), PokéAPI attribution + local-cache fair-use compliance, no warranty, takedown contact line (placeholder the user can fill in).
 
-Inputs:
-- Players (1–8)
-- Extra options N (0–50)
-- Megas in pool (0–N, capped by `REG_MB_MEGAS.length`)
-- Pick order: **Sequential** (1,2,3,1,2,3…) or **Snake** (1,2,3,3,2,1,1,2,3…)
-- Forms toggle: **Split forms** (each variant is its own pick, one variant max per species per player) vs **Unified** (one entry, labeled “Multiple forms”)
-- "Roll Draft" button — generates the shared pool: `players × 6 + extras` total picks, with exactly `megas` mega entries mixed in, drawn from the configured base/forms expansion.
+**Site metadata (so the share card and tab title aren't "Lovable App")**
+- `src/routes/__root.tsx`: replace the template `title` / `description` / `og:*` defaults with real values; add `og:site_name` "Pokémon Champions Draft", `og:type: website`, `twitter:card: summary`.
+- `src/routes/index.tsx` `head()`: fill in matching `twitter:title`, `twitter:description`, `og:url`, and a `<link rel="canonical">` pointing at `https://poke-champions-draft.lovable.app/`.
+- `src/routes/legal.tsx` `head()`: own title/description/og/canonical per the head-meta rules (canonical on leaf only).
+- Favicon: generate a small Poké Ball SVG to `public/favicon.svg` and link it from `__root.tsx`.
 
-### 3. Drafting UI
+**Publish step**
+- After the above lands, publish with `website_info_status: added_or_updated` and a summary naming title, description, OG, Twitter, favicon, and the new legal route.
 
-Layout becomes two-column on ≥md:
+## Files touched
 
-```text
-┌─────────────────┬────────────────────────────────────┐
-│  Teams sidebar  │  Shared pool grid                  │
-│  Player 1 (active)                                   │
-│  [sprite][sprite]…                                   │
-│  Player 2                                            │
-│  [sprite]…                                           │
-└─────────────────┴────────────────────────────────────┘
-```
+- `src/styles.css` — shiny shimmer keyframes + `.shiny-frame` utility
+- `src/lib/shiny-sound.ts` (new)
+- `src/assets/shiny.mp3.asset.json` (new, via `lovable-assets`)
+- `src/routes/index.tsx` — shiny border, chime trigger, mute toggle, footer disclaimer, metadata fill-in
+- `src/routes/legal.tsx` (new)
+- `src/routes/__root.tsx` — real site-wide metadata + favicon link
+- `public/favicon.svg` (new)
 
-- **Sidebar (left)**: one card per player. Editable username input (placeholder `Player N`). Active player highlighted. Up to 6 sprite slots underneath; click a picked sprite to un-pick it (returns to pool). Click a player card to make them the active picker (out-of-order picks).
-- **Pool grid (right)**: shows remaining undrafted entries. Click a card to assign it to the active player. Cards disabled when: active player has 6, or (split-forms mode) active player already owns another form of the same species. Mega entries show a “Mega” badge but render the base sprite/types.
-- **Turn indicator**: shows whose turn it is next based on pick-order rule, advancing automatically after a pick unless the user clicked a different player.
-- **Reset / Re-roll** buttons in header.
+## Out of scope (deferred)
 
-### 4. Pick-order logic
+- Multiplayer rooms (planned separately on the next turn).
 
-- Sequential: `nextPlayer = (totalPicks % players)`.
-- Snake: round `r = floor(picks / players)`, position `p = picks % players`; player is `p` on even rounds, `players - 1 - p` on odd rounds.
-- When the user manually selects a player, that player becomes active for the next pick; subsequent auto-advance resumes from the natural order based on total picks count.
+## Open question
 
-### 5. Form handling
-
-- Split-forms ON: pool expansion replaces a species entry with one entry per form (sharing a `speciesKey`). Per-player constraint: one entry per `speciesKey`.
-- Split-forms OFF: species with `forms` render a single entry with `(Multiple forms)` subtitle; sprite uses the base slug.
-
-### 6. Files touched
-
-- `src/lib/pokemon-pool.ts` — remove mega entries, add `forms` data + `REG_MB_MEGAS`.
-- `src/lib/pokeapi.ts` — unchanged.
-- `src/routes/index.tsx` — full rewrite of `DraftPage` for the new flow (config screen, sidebar, pool grid, undo, manual player select).
-- `src/styles.css` — minor: add an `--active-player` ring color if not already covered by `--accent`.
-
-### Out of scope
-
-- Persisting drafts across reloads.
-- Real multi-user (still a single device, manual turn-taking).
-- Drag-and-drop reordering of team slots.
+OK to use a generic CC0 sparkle SFX rather than the actual Pokémon shiny jingle? Bundling the game audio would itself be the kind of IP issue section 2 is meant to avoid.
