@@ -114,19 +114,30 @@ function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
   const entries: DraftEntry[] = [];
   for (const sp of REG_MB_POOL) {
     if (!sp.mega) continue;
+    // In split-forms mode, certain multi-form species can only mega from one
+    // specific form. Override the sprite slug so the card shows that form.
+    let spriteSlug = sp.slug;
+    if (splitForms && sp.forms && sp.forms.length > 0) {
+      const override = MEGA_FORM_OVERRIDES[sp.slug];
+      if (override) spriteSlug = override;
+    }
     entries.push({
       id: `m:${sp.slug}`,
-      name: sp.mega.name,
-      slug: sp.slug, // sprite from base form
+      name: sp.name, // base species name; mega badge denotes mega status
+      slug: spriteSlug,
       speciesKey: sp.slug,
       isMega: true,
       altSlugs: [sp.mega.slug],
     });
   }
-  // splitForms parameter retained for signature parity; megas are species-level.
-  void splitForms;
   return entries;
 }
+
+// Split-forms mode: only this form of the species can mega evolve.
+const MEGA_FORM_OVERRIDES: Record<string, string> = {
+  floette: "floette-eternal",
+  slowbro: "slowbro",
+};
 
 function rollPool(cfg: Config): DraftEntry[] {
   const totalNeeded = cfg.players * 6 + cfg.extras;
