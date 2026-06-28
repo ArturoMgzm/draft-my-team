@@ -835,7 +835,7 @@ function HoverSprite({
     if (!hover || slugs.length <= 1) return;
     const id = window.setInterval(() => {
       setIdx((i) => (i + 1) % slugs.length);
-    }, 700);
+    }, 1200);
     return () => window.clearInterval(id);
   }, [hover, slugs.length]);
 
@@ -843,12 +843,10 @@ function HoverSprite({
     if (!hover) setIdx(0);
   }, [hover]);
 
-  const data = datas[idx] ?? datas[0];
-  const src = entry.shiny
-    ? data?.shinySprite ?? data?.sprite ?? null
-    : data?.sprite ?? null;
-  const label =
-    idx === 0 ? entry.name : slugs[idx].replace(/-/g, " ");
+  const pickSrc = (d: PokemonData | null) =>
+    entry.shiny ? d?.shinySprite ?? d?.sprite ?? null : d?.sprite ?? null;
+  const label = idx === 0 ? entry.name : slugs[idx].replace(/-/g, " ");
+  const anyLoaded = datas.some((d) => d);
 
   return (
     <div
@@ -856,18 +854,28 @@ function HoverSprite({
       onMouseLeave={() => setHover(false)}
       className="relative h-full w-full"
     >
-      {src ? (
-        <img
-          src={src}
-          alt={label}
-          loading="lazy"
-          className={className}
-        />
-      ) : (
+      {!anyLoaded && (
         <div className="h-full w-full animate-pulse rounded bg-muted" />
       )}
+      {datas.map((d, i) => {
+        const src = pickSrc(d);
+        if (!src) return null;
+        const visible = i === idx;
+        return (
+          <img
+            key={slugs[i]}
+            src={src}
+            alt={i === idx ? label : ""}
+            loading="lazy"
+            aria-hidden={!visible}
+            className={`${className ?? ""} absolute inset-0 transition-opacity duration-500 ease-in-out ${
+              visible ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        );
+      })}
       {hover && slugs.length > 1 && (
-        <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-background/80 px-1 text-[9px] font-semibold capitalize text-foreground">
+        <span className="pointer-events-none absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-background/80 px-1 text-[9px] font-semibold capitalize text-foreground">
           {label}
         </span>
       )}
