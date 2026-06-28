@@ -164,9 +164,9 @@
   }
 }
 
-/* Shiny rolled-sprite shimmer frame. The conic gradient rotates by animating
- * a CSS custom property registered with @property, so the gradient itself
- * spins instead of the box (which would also rotate the sprite). */
+/* Shiny rolled-sprite shimmer frame. A pseudo-element paints a rotating
+ * conic-gradient border so the host element's own children render normally
+ * on top. The gradient itself spins via an @property-animated angle. */
 @property --shiny-angle {
   syntax: "<angle>";
   inherits: false;
@@ -184,27 +184,37 @@
 
 .shiny-frame {
   position: relative;
-  border-radius: 0.6rem;
-  padding: 2px;
-  background:
-    conic-gradient(
-      from var(--shiny-angle),
-      oklch(0.9 0.18 95),
-      oklch(0.8 0.18 200),
-      oklch(0.75 0.2 320),
-      oklch(0.9 0.18 95)
-    );
-  animation: shiny-spin 3s linear infinite, shiny-glow 2.4s ease-in-out infinite;
+  isolation: isolate;
+  background-color: var(--color-card);
+  animation: shiny-glow 2.4s ease-in-out infinite;
 }
-.shiny-frame > * {
-  border-radius: 0.5rem;
-  background: var(--color-card);
+.shiny-frame::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--shiny-angle),
+    oklch(0.9 0.18 95),
+    oklch(0.8 0.18 200),
+    oklch(0.75 0.2 320),
+    oklch(0.9 0.18 95)
+  );
+  animation: shiny-spin 3s linear infinite;
+  /* Mask the inner fill so only a 2px gradient border is visible. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+          mask-composite: exclude;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shiny-frame {
-    animation: none;
-    background: oklch(0.85 0.17 88);
-    box-shadow: 0 0 10px 2px oklch(0.85 0.17 88 / 0.55);
-  }
+  .shiny-frame { animation: none; box-shadow: 0 0 10px 2px oklch(0.85 0.17 88 / 0.55); }
+  .shiny-frame::before { animation: none; background: oklch(0.85 0.17 88); }
 }
