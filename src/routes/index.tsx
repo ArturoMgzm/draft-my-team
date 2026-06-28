@@ -304,6 +304,7 @@ function DraftPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <MuteToggle />
             {pool && (
               <>
                 <button
@@ -368,10 +369,50 @@ function DraftPage() {
         )}
       </main>
 
-      <footer className="border-t border-border py-5 text-center text-xs text-muted-foreground">
-        Reg M-B · Sprites cached locally per PokéAPI guidelines.
+      <footer className="border-t border-border px-6 py-5 text-center text-[11px] leading-relaxed text-muted-foreground">
+        <p>
+          Pokémon and Pokémon character names are trademarks of Nintendo, Game
+          Freak, and The Pokémon Company. This is an unofficial fan project,
+          not affiliated with or endorsed by them. Pokémon data and sprites via{" "}
+          <a
+            href="https://pokeapi.co"
+            target="_blank"
+            rel="noreferrer"
+            className="underline hover:text-accent"
+          >
+            PokéAPI
+          </a>{" "}
+          (cached locally per fair-use guidelines).
+        </p>
+        <p className="mt-2">
+          <Link to="/legal" className="underline hover:text-accent">
+            Legal & disclaimers
+          </Link>
+        </p>
       </footer>
     </div>
+  );
+}
+
+function MuteToggle() {
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    setMuted(isShinyMuted());
+  }, []);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const next = !muted;
+        setMuted(next);
+        setShinyMuted(next);
+      }}
+      title={muted ? "Shiny chime muted" : "Shiny chime on"}
+      aria-label={muted ? "Unmute shiny chime" : "Mute shiny chime"}
+      className="rounded-md border border-border bg-card px-2 py-1.5 text-xs hover:bg-secondary"
+    >
+      {muted ? "🔇" : "🔊"}
+    </button>
   );
 }
 
@@ -623,9 +664,11 @@ function TeamSlot({ entry, onClick }: { entry: DraftEntry; onClick: () => void }
         if (confirm(`Remove ${entry.name} from this team?`)) onClick();
       }}
       title={`${entry.name} — click to undo`}
-      className="group relative h-full w-full"
+      className={`group relative h-full w-full ${entry.shiny ? "shiny-frame" : ""}`}
     >
-      <HoverSprite entry={entry} className="h-full w-full object-contain transition group-hover:opacity-50" />
+      <div className="relative h-full w-full">
+        <HoverSprite entry={entry} className="h-full w-full object-contain transition group-hover:opacity-50" />
+      </div>
       {entry.isMega && (
         <span className="absolute bottom-0 right-0 rounded-sm bg-accent px-0.5 text-[7px] font-bold uppercase text-accent-foreground">
           M
@@ -714,7 +757,9 @@ function PoolCard({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`group relative flex flex-col items-center rounded-xl border bg-card p-2 text-left transition ${
+      className={`group relative flex flex-col items-center rounded-xl border p-2 text-left transition ${
+        entry.shiny ? "shiny-frame !border-transparent" : "bg-card"
+      } ${
         disabled
           ? "cursor-not-allowed border-border/40 opacity-40"
           : "border-border hover:-translate-y-0.5 hover:border-accent hover:shadow-lg hover:shadow-accent/10"
