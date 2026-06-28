@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { REG_MB_POOL } from "@/lib/pokemon-pool";
 import { fetchPokemon, type PokemonData } from "@/lib/pokeapi";
+import { playShinyChime, isShinyMuted, setShinyMuted } from "@/lib/shiny-sound";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -16,6 +17,22 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content: "Turn-based shared-pool drafting for Reg M-B.",
+      },
+      { property: "og:type", content: "website" },
+      {
+        property: "og:url",
+        content: "https://poke-champions-draft.lovable.app/",
+      },
+      { name: "twitter:title", content: "Pokémon Champions Draft" },
+      {
+        name: "twitter:description",
+        content: "Turn-based shared-pool drafting for Reg M-B.",
+      },
+    ],
+    links: [
+      {
+        rel: "canonical",
+        href: "https://poke-champions-draft.lovable.app/",
       },
     ],
   }),
@@ -223,10 +240,12 @@ function DraftPage() {
 
   function startDraft() {
     if (overCapacity) return;
-    setPool(rollPool(cfg));
+    const rolled = rollPool(cfg);
+    setPool(rolled);
     setPicks([]);
     setManualPlayer(null);
     setUsernames(Array.from({ length: cfg.players }, () => ""));
+    if (rolled.some((e) => e.shiny)) playShinyChime();
   }
 
   function reroll() {
