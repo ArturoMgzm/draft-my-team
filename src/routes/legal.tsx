@@ -69,15 +69,14 @@ function LegalPage() {
             and trademarks are the property of their respective owners —
             including Nintendo, Game Freak, Creatures Inc., and The Pokémon
             Company. Their use here is for descriptive and informational
-            purposes only, in the context of nominative fair use, to identify
-            the species a player has drafted.
+            purposes only to identify the species a player has drafted.
           </p>
         </section>
 
         <section className="mt-8 space-y-3">
           <h2 className="text-xl font-bold">Data & sprite attribution</h2>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            Pokémon names, types, and sprite artwork are fetched from{" "}
+            Pokémon names, stats, types, abilites, moves and sprite artwork are fetched from{" "}
             <a
               href="https://pokeapi.co"
               target="_blank"
@@ -98,15 +97,6 @@ function LegalPage() {
             This site is provided "as is" without warranty of any kind. The
             regulation pool, mega list, and form mappings are maintained
             manually and may lag behind official rules updates.
-          </p>
-        </section>
-
-        <section className="mt-8 space-y-3">
-          <h2 className="text-xl font-bold">Takedown / contact</h2>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            If you are a rights holder and would like content removed, or want
-            to report an issue, please open an issue on the project repository
-            or contact the project maintainer.
           </p>
         </section>
 
