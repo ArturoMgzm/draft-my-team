@@ -1,8 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { REG_MB_POOL } from "@/lib/pokemon-pool";
-import { fetchPokemon, type PokemonData } from "@/lib/pokeapi";
+import {
+  type Config,
+  DEFAULT_CONFIG,
+  type DraftEntry,
+  nextPlayerIndex,
+  rollPool,
+} from "@/lib/draft-engine";
 import { playShinyChime, isShinyMuted, setShinyMuted } from "@/lib/shiny-sound";
+import { ConfigPanel } from "@/components/draft/ConfigPanel";
+import { PoolGrid } from "@/components/draft/PoolGrid";
+import { TeamsSidebar } from "@/components/draft/TeamsSidebar";
+import { Lobby } from "@/components/draft/Lobby";
+import { RoomDraft } from "@/components/draft/RoomDraft";
+import { useRoom } from "@/hooks/useRoom";
+import {
+  applyRoomAction,
+  generateRoomCode,
+  getDeviceId,
+} from "@/lib/room-client";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -11,316 +27,47 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Shared-pool draft tool for Pokémon Champions Regulation M-B. Configure players, megas, and form rules, then draft teams turn by turn.",
+          "Shared-pool draft tool for Pokémon Champions Regulation M-B. Solo or multiplayer rooms with sort, filter, and configurable mega counts.",
       },
       { property: "og:title", content: "Pokémon Champions Draft" },
       {
         property: "og:description",
-        content: "Turn-based shared-pool drafting for Reg M-B.",
+        content: "Turn-based shared-pool drafting for Reg M-B — solo or multiplayer.",
       },
       { property: "og:type", content: "website" },
-      {
-        property: "og:url",
-        content: "https://poke-champions-draft.lovable.app/",
-      },
       { name: "twitter:title", content: "Pokémon Champions Draft" },
-      {
-        name: "twitter:description",
-        content: "Turn-based shared-pool drafting for Reg M-B.",
-      },
-    ],
-    links: [
-      {
-        rel: "canonical",
-        href: "https://poke-champions-draft.lovable.app/",
-      },
     ],
   }),
-  component: DraftPage,
+  component: Page,
 });
 
-function shuffle<T>(arr: T[]): T[] {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+type Mode = "menu" | "solo" | "room";
 
-type DraftEntry = {
-  id: string;
-  name: string;
-  slug: string; // sprite/types slug (base for megas)
-  speciesKey: string; // base species slug — used for per-player form constraint
-  isMega?: boolean;
-  multiForm?: boolean; // species with forms, unified mode
-  altSlugs?: string[]; // alternate sprites shown on hover (mega slug, or sibling forms)
-  shiny?: boolean; // 1-in-4096 lucky roll
-};
-
-type Pick = { entryId: string; playerIdx: number };
-
-type PickOrder = "sequential" | "snake";
-type MegaMode = "exact" | "atleast";
-
-type Config = {
-  players: number;
-  extras: number;
-  megas: number;
-  megaMode: MegaMode;
-  pickOrder: PickOrder;
-  splitForms: boolean;
-};
-
-const DEFAULT_CONFIG: Config = {
-  players: 2,
-  extras: 4,
-  megas: 2,
-  megaMode: "exact",
-  pickOrder: "snake",
-  splitForms: true,
-};
-
-const MEGA_CAPABLE_SPECIES = new Set(
-  REG_MB_POOL.filter((s) => s.mega).map((s) => s.slug),
-);
-
-function buildBaseEntries(splitForms: boolean): DraftEntry[] {
-  const entries: DraftEntry[] = [];
-  for (const sp of REG_MB_POOL) {
-    if (sp.forms && sp.forms.length > 0) {
-      if (splitForms) {
-        for (const f of sp.forms) {
-          entries.push({
-            id: `f:${sp.slug}:${f.slug}`,
-            name: f.name,
-            slug: f.slug,
-            speciesKey: sp.slug,
-          });
-        }
-      } else {
-        entries.push({
-          id: `b:${sp.slug}`,
-          name: sp.name,
-          slug: sp.slug,
-          speciesKey: sp.slug,
-          multiForm: true,
-          altSlugs: sp.forms.map((f) => f.slug),
-        });
-      }
-    } else {
-      entries.push({
-        id: `b:${sp.slug}`,
-        name: sp.name,
-        slug: sp.slug,
-        speciesKey: sp.slug,
-      });
-    }
-  }
-  return entries;
-}
-
-function buildNonMegaEntries(splitForms: boolean): DraftEntry[] {
-  return buildBaseEntries(splitForms).filter(
-    (entry) => !MEGA_CAPABLE_SPECIES.has(entry.speciesKey),
-  );
-}
-
-function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
-  const entries: DraftEntry[] = [];
-  for (const sp of REG_MB_POOL) {
-    if (!sp.mega) continue;
-    // In split-forms mode, certain multi-form species can only mega from one
-    // specific form. Override the sprite slug so the card shows that form.
-    let spriteSlug = sp.slug;
-    if (splitForms && sp.forms && sp.forms.length > 0) {
-      const override = MEGA_FORM_OVERRIDES[sp.slug];
-      if (override) spriteSlug = override;
-    }
-    entries.push({
-      id: `m:${sp.slug}`,
-      name: sp.name, // base species name; mega badge denotes mega status
-      slug: spriteSlug,
-      speciesKey: sp.slug,
-      isMega: true,
-      altSlugs: [sp.mega.slug],
-    });
-  }
-  return entries;
-}
-
-// Split-forms mode: only this form of the species can mega evolve.
-const MEGA_FORM_OVERRIDES: Record<string, string> = {
-  floette: "floette-eternal",
-  slowbro: "slowbro",
-};
-
-function rollPool(cfg: Config): DraftEntry[] {
-  const totalNeeded = cfg.players * 6 + cfg.extras;
-  const guaranteedMegas = Math.min(cfg.megas, totalNeeded);
-  const megaPool = shuffle(buildMegaCapableEntries(cfg.splitForms));
-  const nonMegaPool = shuffle(buildNonMegaEntries(cfg.splitForms));
-  let chosen: DraftEntry[];
-  if (cfg.megaMode === "exact") {
-    const nonMegas = nonMegaPool.slice(0, totalNeeded - guaranteedMegas);
-    const megas = megaPool.slice(0, guaranteedMegas);
-    chosen = [...nonMegas, ...megas];
-  } else {
-    // at least X megas: lock in X megas, fill the rest from the combined pool
-    const lockedMegas = megaPool.slice(0, guaranteedMegas);
-    const rest = shuffle([
-      ...megaPool.slice(guaranteedMegas),
-      ...nonMegaPool,
-    ]).slice(0, totalNeeded - guaranteedMegas);
-    chosen = [...lockedMegas, ...rest];
-  }
-  // 1-in-4096 shiny roll per entry
-  chosen = chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 4096 }));
-  return shuffle(chosen);
-}
-
-function nextPlayerFor(pickIdx: number, cfg: Config): number {
-  const n = cfg.players;
-  if (cfg.pickOrder === "sequential") return pickIdx % n;
-  const round = Math.floor(pickIdx / n);
-  const pos = pickIdx % n;
-  return round % 2 === 0 ? pos : n - 1 - pos;
-}
-
-function DraftPage() {
-  const [cfg, setCfg] = useState<Config>(DEFAULT_CONFIG);
-  const [pool, setPool] = useState<DraftEntry[] | null>(null);
-  const [picks, setPicks] = useState<Pick[]>([]);
-  const [usernames, setUsernames] = useState<string[]>([]);
-  const [manualPlayer, setManualPlayer] = useState<number | null>(null);
-
-  const totalSlots = cfg.players * 6;
-  const totalNeeded = totalSlots + cfg.extras;
-  const megaMax = useMemo(
-    () => Math.min(buildMegaCapableEntries(cfg.splitForms).length, totalNeeded),
-    [cfg.splitForms, totalNeeded],
-  );
-  const overCapacity = useMemo(() => {
-    const megaNeeded = Math.min(cfg.megas, totalNeeded);
-    const nonMegaAvailable = buildNonMegaEntries(cfg.splitForms).length;
-    const megaAvailable = buildMegaCapableEntries(cfg.splitForms).length;
-    if (megaNeeded > megaAvailable) return true;
-    if (cfg.megaMode === "exact") {
-      return totalNeeded - megaNeeded > nonMegaAvailable;
-    }
-    return totalNeeded > nonMegaAvailable + megaAvailable;
-  }, [cfg.splitForms, cfg.megas, cfg.megaMode, totalNeeded]);
-
-  // Clamp megas if config changes
-  useEffect(() => {
-    if (cfg.megas > megaMax) setCfg((c) => ({ ...c, megas: megaMax }));
-  }, [cfg.megas, megaMax]);
-
-  const remainingPool = useMemo(() => {
-    if (!pool) return [];
-    const taken = new Set(picks.map((p) => p.entryId));
-    return pool.filter((e) => !taken.has(e.id));
-  }, [pool, picks]);
-
-  const teams = useMemo(() => {
-    const t: DraftEntry[][] = Array.from({ length: cfg.players }, () => []);
-    if (!pool) return t;
-    const byId = new Map(pool.map((e) => [e.id, e]));
-    for (const p of picks) {
-      const e = byId.get(p.entryId);
-      if (e && p.playerIdx < t.length) t[p.playerIdx].push(e);
-    }
-    return t;
-  }, [picks, pool, cfg.players]);
-
-  const autoPlayer = nextPlayerFor(picks.length, cfg);
-  const activePlayer = manualPlayer ?? autoPlayer;
-  const draftComplete = picks.length >= totalSlots;
-
-  function startDraft() {
-    if (overCapacity) return;
-    const rolled = rollPool(cfg);
-    setPool(rolled);
-    setPicks([]);
-    setManualPlayer(null);
-    setUsernames(Array.from({ length: cfg.players }, () => ""));
-    if (rolled.some((e) => e.shiny)) playShinyChime();
-  }
-
-  function reroll() {
-    if (!confirm("Re-roll the pool and clear all picks?")) return;
-    startDraft();
-  }
-
-  function reset() {
-    if (!confirm("Reset to configuration?")) return;
-    setPool(null);
-    setPicks([]);
-    setManualPlayer(null);
-  }
-
-  function canPick(entry: DraftEntry, playerIdx: number): boolean {
-    if (draftComplete) return false;
-    const team = teams[playerIdx] ?? [];
-    if (team.length >= 6) return false;
-    if (team.some((e) => e.speciesKey === entry.speciesKey)) return false;
-    return true;
-  }
-
-  function pick(entry: DraftEntry) {
-    if (!canPick(entry, activePlayer)) return;
-    setPicks((prev) => [...prev, { entryId: entry.id, playerIdx: activePlayer }]);
-    setManualPlayer(null);
-  }
-
-  function unpick(entryId: string) {
-    setPicks((prev) => prev.filter((p) => p.entryId !== entryId));
-  }
-
-  function selectPlayer(idx: number) {
-    if ((teams[idx] ?? []).length >= 6) return;
-    setManualPlayer(idx);
-  }
-
-  function setUsername(idx: number, name: string) {
-    setUsernames((prev) => {
-      const next = prev.slice();
-      next[idx] = name;
-      return next;
-    });
-  }
+function Page() {
+  const [mode, setMode] = useState<Mode>("menu");
+  const [roomCode, setRoomCode] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border bg-card/40 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-1 px-6 py-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+          <button
+            onClick={() => {
+              if (mode !== "menu" && !confirm("Return to main menu?")) return;
+              setMode("menu");
+              setRoomCode(null);
+            }}
+            className="text-left"
+          >
             <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
               Pokémon <span className="text-primary">Champions</span> Draft
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Shared-pool drafting · Regulation M-B
             </p>
-          </div>
+          </button>
           <div className="flex items-center gap-3">
             <MuteToggle />
-            {pool && (
-              <>
-                <button
-                  onClick={reroll}
-                  className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-secondary"
-                >
-                  Re-roll Pool
-                </button>
-                <button
-                  onClick={reset}
-                  className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-secondary"
-                >
-                  ← Config
-                </button>
-              </>
-            )}
             <a
               href="https://pokeapi.co"
               target="_blank"
@@ -334,38 +81,24 @@ function DraftPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {!pool ? (
-          <ConfigPanel
-            cfg={cfg}
-            setCfg={setCfg}
-            megaMax={megaMax}
-            overCapacity={overCapacity}
-            onStart={startDraft}
+        {mode === "menu" && (
+          <MainMenu
+            onSolo={() => setMode("solo")}
+            onRoom={(code) => {
+              setRoomCode(code);
+              setMode("room");
+            }}
           />
-        ) : (
-          <div className="grid gap-6 md:grid-cols-[320px_1fr]">
-            <TeamsSidebar
-              teams={teams}
-              usernames={usernames}
-              setUsername={setUsername}
-              activePlayer={activePlayer}
-              autoPlayer={autoPlayer}
-              draftComplete={draftComplete}
-              onSelectPlayer={selectPlayer}
-              onUnpick={unpick}
-            />
-            <PoolGrid
-              pool={remainingPool}
-              canPick={(e) => canPick(e, activePlayer)}
-              onPick={pick}
-              activeUsername={
-                usernames[activePlayer]?.trim() || `Player ${activePlayer + 1}`
-              }
-              draftComplete={draftComplete}
-              totalPicked={picks.length}
-              totalSlots={totalSlots}
-            />
-          </div>
+        )}
+        {mode === "solo" && <SoloDraft onExit={() => setMode("menu")} />}
+        {mode === "room" && roomCode && (
+          <RoomMode
+            code={roomCode}
+            onExit={() => {
+              setRoomCode(null);
+              setMode("menu");
+            }}
+          />
         )}
       </main>
 
@@ -416,533 +149,327 @@ function MuteToggle() {
   );
 }
 
-function ConfigPanel({
-  cfg,
-  setCfg,
-  megaMax,
-  overCapacity,
-  onStart,
+function MainMenu({
+  onSolo,
+  onRoom,
 }: {
-  cfg: Config;
-  setCfg: (updater: (c: Config) => Config) => void;
-  megaMax: number;
-  overCapacity: boolean;
-  onStart: () => void;
+  onSolo: () => void;
+  onRoom: (code: string) => void;
 }) {
-  const totalNeeded = cfg.players * 6 + cfg.extras;
+  const [joining, setJoining] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const [joinName, setJoinName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function hostRoom() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const code = generateRoomCode();
+      const deviceId = getDeviceId();
+      await applyRoomAction(code, deviceId, {
+        type: "create",
+        config: DEFAULT_CONFIG,
+        username: "Host",
+      });
+      onRoom(code);
+    } catch (e) {
+      setErr(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function joinRoom() {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length !== 5) {
+      setErr("Code must be 5 characters");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const deviceId = getDeviceId();
+      await applyRoomAction(code, deviceId, {
+        type: "join",
+        username: joinName.trim() || "Player",
+      });
+      onRoom(code);
+    } catch (e) {
+      setErr(String((e as Error)?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <section className="mx-auto max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-lg">
-      <h2 className="text-lg font-bold">Draft Configuration</h2>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Shared pool of {totalNeeded} Pokémon ({cfg.players * 6} slots + {cfg.extras} extras).
-      </p>
-
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <NumberField
-          label="Players"
-          value={cfg.players}
-          min={1}
-          max={8}
-          onChange={(v) => setCfg((c) => ({ ...c, players: v }))}
-          hint="6 Pokémon per player"
-        />
-        <NumberField
-          label="Extra options"
-          value={cfg.extras}
-          min={0}
-          max={50}
-          onChange={(v) => setCfg((c) => ({ ...c, extras: v }))}
-          hint="Bonus picks in shared pool"
-        />
-        <NumberField
-          label="Megas in pool"
-          value={cfg.megas}
-          min={0}
-          max={megaMax}
-          onChange={(v) => setCfg((c) => ({ ...c, megas: v }))}
-          hint={`Max ${megaMax}`}
-        />
-        <ToggleField
-          label="Mega count"
-          value={cfg.megaMode}
-          options={[
-            { value: "exact", label: "Exactly", hint: "Always X megas in pool" },
-            { value: "atleast", label: "At least", hint: "X guaranteed, more may roll" },
-          ]}
-          onChange={(v) => setCfg((c) => ({ ...c, megaMode: v as MegaMode }))}
-        />
-        <div className="sm:col-span-2">
-          <ToggleField
-            label="Pick order"
-            value={cfg.pickOrder}
-            options={[
-              { value: "sequential", label: "Sequential", hint: "1,2,3,1,2,3…" },
-              { value: "snake", label: "Snake", hint: "1,2,3,3,2,1…" },
-            ]}
-            onChange={(v) => setCfg((c) => ({ ...c, pickOrder: v as PickOrder }))}
-          />
+    <section className="mx-auto max-w-2xl space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-6 text-center">
+        <h2 className="text-xl font-bold">How will you draft?</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Solo is one device, multi-seat. Rooms let other people join over the internet.
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <button
+            onClick={onSolo}
+            className="rounded-xl border border-border bg-input p-4 text-left transition hover:border-accent hover:bg-accent/5"
+          >
+            <div className="text-sm font-bold">Solo / Local</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              One screen, take turns
+            </div>
+          </button>
+          <button
+            onClick={hostRoom}
+            disabled={busy}
+            className="rounded-xl border border-accent/40 bg-accent/10 p-4 text-left transition hover:border-accent hover:bg-accent/20 disabled:opacity-50"
+          >
+            <div className="text-sm font-bold">Host Room</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Creates a 5-char code to share
+            </div>
+          </button>
+          <button
+            onClick={() => setJoining((s) => !s)}
+            className="rounded-xl border border-border bg-input p-4 text-left transition hover:border-accent hover:bg-accent/5"
+          >
+            <div className="text-sm font-bold">Join Room</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Enter a code from the host
+            </div>
+          </button>
         </div>
-        <div className="sm:col-span-2">
-          <ToggleField
-            label="Pokémon forms"
-            value={cfg.splitForms ? "split" : "unified"}
-            options={[
-              {
-                value: "split",
-                label: "Split forms",
-                hint: "Each variant is its own pick · one per species per player",
-              },
-              {
-                value: "unified",
-                label: "Unified",
-                hint: "All variants under one entry",
-              },
-            ]}
-            onChange={(v) => setCfg((c) => ({ ...c, splitForms: v === "split" }))}
-          />
-        </div>
-      </div>
-
-      {overCapacity && (
-        <div className="mt-4 rounded-md border border-primary/50 bg-primary/10 px-3 py-2 text-sm text-primary">
-          Pool too large — not enough eligible Pokémon for the selected split.
-        </div>
-      )}
-
-      <button
-        onClick={onStart}
-        disabled={overCapacity}
-        className="mt-5 h-12 w-full rounded-xl bg-primary px-6 text-sm font-bold uppercase tracking-wider text-primary-foreground shadow-md transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Roll Pool & Start Draft
-      </button>
-    </section>
-  );
-}
-
-function ToggleField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: { value: string; label: string; hint?: string }[];
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
-      <div className="grid grid-cols-2 gap-2">
-        {options.map((opt) => {
-          const active = opt.value === value;
-          return (
+        {joining && (
+          <div className="mt-4 flex flex-col gap-2 rounded-xl border border-border bg-background/40 p-3 sm:flex-row">
+            <input
+              value={joinCode}
+              onChange={(e) =>
+                setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))
+              }
+              placeholder="CODE"
+              className="w-full rounded-md border border-border bg-input px-3 py-2 text-center font-mono text-lg tracking-[0.4em]"
+            />
+            <input
+              value={joinName}
+              onChange={(e) => setJoinName(e.target.value)}
+              placeholder="Your name"
+              className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+            />
             <button
-              key={opt.value}
-              type="button"
-              onClick={() => onChange(opt.value)}
-              className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
-                active
-                  ? "border-accent bg-accent/10 text-foreground"
-                  : "border-border bg-input text-muted-foreground hover:border-accent/50"
-              }`}
+              onClick={joinRoom}
+              disabled={busy}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:brightness-110 disabled:opacity-50"
             >
-              <div className="font-semibold">{opt.label}</div>
-              {opt.hint && (
-                <div className="text-[11px] text-muted-foreground">{opt.hint}</div>
-              )}
+              {busy ? "…" : "Join"}
             </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function TeamsSidebar({
-  teams,
-  usernames,
-  setUsername,
-  activePlayer,
-  autoPlayer,
-  draftComplete,
-  onSelectPlayer,
-  onUnpick,
-}: {
-  teams: DraftEntry[][];
-  usernames: string[];
-  setUsername: (i: number, n: string) => void;
-  activePlayer: number;
-  autoPlayer: number;
-  draftComplete: boolean;
-  onSelectPlayer: (i: number) => void;
-  onUnpick: (entryId: string) => void;
-}) {
-  return (
-    <aside className="space-y-3 md:sticky md:top-4 md:self-start">
-      <div className="rounded-lg border border-border bg-card/60 px-3 py-2 text-xs text-muted-foreground">
-        {draftComplete ? (
-          <span className="font-semibold text-accent">Draft complete!</span>
-        ) : (
-          <>
-            On the clock:{" "}
-            <span className="font-semibold text-foreground">
-              {usernames[activePlayer]?.trim() || `Player ${activePlayer + 1}`}
-            </span>
-            {activePlayer !== autoPlayer && (
-              <span className="ml-1 text-accent">(out of turn)</span>
-            )}
-          </>
+          </div>
+        )}
+        {err && (
+          <div className="mt-3 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs text-primary">
+            {err}
+          </div>
         )}
       </div>
-      {teams.map((team, idx) => {
-        const isActive = idx === activePlayer;
-        const placeholder = `Player ${idx + 1}`;
-        return (
-          <div
-            key={idx}
-            onClick={() => onSelectPlayer(idx)}
-            className={`cursor-pointer rounded-xl border p-3 transition ${
-              isActive
-                ? "border-accent bg-accent/5 shadow-md shadow-accent/10"
-                : "border-border bg-card hover:border-accent/50"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
-                  isActive
-                    ? "bg-accent text-accent-foreground"
-                    : "bg-secondary text-muted-foreground"
-                }`}
-              >
-                {idx + 1}
-              </span>
-              <input
-                type="text"
-                value={usernames[idx] ?? ""}
-                placeholder={placeholder}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setUsername(idx, e.target.value)}
-                className="w-full bg-transparent text-sm font-semibold outline-none placeholder:text-muted-foreground/70 focus:underline"
-              />
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {team.length}/6
-              </span>
-            </div>
-            <div className="mt-2 grid grid-cols-6 gap-1">
-              {Array.from({ length: 6 }).map((_, slot) => {
-                const entry = team[slot];
-                return (
-                  <div
-                    key={slot}
-                    className="aspect-square rounded-md border border-border/50 bg-background/40"
-                  >
-                    {entry && (
-                      <TeamSlot entry={entry} onClick={() => onUnpick(entry.id)} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </aside>
-  );
-}
-
-function TeamSlot({ entry, onClick }: { entry: DraftEntry; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        if (confirm(`Remove ${entry.name} from this team?`)) onClick();
-      }}
-      title={`${entry.name} — click to undo`}
-      className={`group relative h-full w-full ${entry.shiny ? "shiny-frame" : ""}`}
-    >
-      <div className="relative h-full w-full">
-        <HoverSprite entry={entry} className="h-full w-full object-contain transition group-hover:opacity-50" />
-      </div>
-      {entry.isMega && (
-        <span className="absolute bottom-0 right-0 rounded-sm bg-accent px-0.5 text-[7px] font-bold uppercase text-accent-foreground">
-          M
-        </span>
-      )}
-      {entry.shiny && (
-        <span className="absolute left-0 top-0 text-[9px]" title="Shiny!">✨</span>
-      )}
-      <span className="pointer-events-none absolute inset-0 grid place-content-center text-[10px] font-bold text-primary opacity-0 group-hover:opacity-100">
-        ✕
-      </span>
-    </button>
-  );
-}
-
-function PoolGrid({
-  pool,
-  canPick,
-  onPick,
-  activeUsername,
-  draftComplete,
-  totalPicked,
-  totalSlots,
-}: {
-  pool: DraftEntry[];
-  canPick: (e: DraftEntry) => boolean;
-  onPick: (e: DraftEntry) => void;
-  activeUsername: string;
-  draftComplete: boolean;
-  totalPicked: number;
-  totalSlots: number;
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-bold">
-          Shared Pool{" "}
-          <span className="text-sm font-normal text-muted-foreground">
-            ({pool.length} left)
-          </span>
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          Picks: {totalPicked}/{totalSlots}
-        </span>
-      </div>
-      {!draftComplete && (
-        <p className="text-xs text-muted-foreground">
-          Click a Pokémon to draft it to{" "}
-          <span className="font-semibold text-foreground">{activeUsername}</span>.
-        </p>
-      )}
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-        {pool.map((e) => (
-          <PoolCard key={e.id} entry={e} disabled={!canPick(e)} onClick={() => onPick(e)} />
-        ))}
-      </div>
-      {pool.length === 0 && (
-        <div className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground">
-          Pool empty.
-        </div>
-      )}
     </section>
   );
 }
 
-function PoolCard({
-  entry,
-  disabled,
-  onClick,
-}: {
-  entry: DraftEntry;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  const [types, setTypes] = useState<string[] | null>(null);
-  useEffect(() => {
-    let active = true;
-    fetchPokemon(entry.slug).then((d) => active && setTypes(d?.types ?? []));
-    return () => {
-      active = false;
-    };
-  }, [entry.slug]);
+function RoomMode({ code, onExit }: { code: string; onExit: () => void }) {
+  const selfId = useMemo(() => getDeviceId(), []);
+  const { room, players, loading, error } = useRoom(code);
 
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`group relative flex flex-col items-center rounded-xl border p-2 text-left transition ${
-        entry.shiny ? "shiny-frame !border-transparent" : "bg-card"
-      } ${
-        disabled
-          ? "cursor-not-allowed border-border/40 opacity-40"
-          : "border-border hover:-translate-y-0.5 hover:border-accent hover:shadow-lg hover:shadow-accent/10"
-      }`}
-    >
-      {entry.isMega && (
-        <span className="absolute right-1.5 top-1.5 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground">
-          Mega
-        </span>
-      )}
-      {entry.multiForm && (
-        <span className="absolute left-1.5 top-1.5 rounded bg-secondary px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
-          Multi
-        </span>
-      )}
-      {entry.shiny && (
-        <span
-          className="absolute right-1.5 bottom-1.5 text-sm"
-          title="Shiny — 1 in 4096!"
-        >
-          ✨
-        </span>
-      )}
-      <div className="flex aspect-square w-full items-center justify-center">
-        <HoverSprite
-          entry={entry}
-          className="h-full w-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.4)] transition-transform group-hover:scale-105"
-        />
-      </div>
-      <div className="mt-1 w-full text-center">
-        <div className="truncate text-xs font-bold">
-          {entry.name}
+  if (loading && !room) {
+    return <div className="py-10 text-center text-sm text-muted-foreground">Loading room…</div>;
+  }
+  if (error || !room) {
+    return (
+      <div className="mx-auto max-w-md space-y-3 text-center">
+        <div className="rounded-md border border-primary/40 bg-primary/10 px-3 py-3 text-sm text-primary">
+          {error ?? "Room not found"}
         </div>
-        <div className="mt-1 flex flex-wrap justify-center gap-1">
-          {types?.map((t) => <TypeBadge key={t} type={t} />)}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-  hint,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (n: number) => void;
-  hint?: string;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
-      <div className="flex h-12 items-stretch overflow-hidden rounded-xl border border-border bg-input">
         <button
-          type="button"
-          onClick={() => onChange(Math.max(min, value - 1))}
-          className="px-4 text-lg font-bold text-muted-foreground hover:bg-secondary hover:text-foreground"
-          aria-label={`Decrease ${label}`}
+          onClick={onExit}
+          className="rounded-md bg-card px-3 py-1.5 text-xs hover:bg-secondary"
         >
-          −
-        </button>
-        <input
-          type="number"
-          min={min}
-          max={max}
-          value={value}
-          onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            if (Number.isNaN(v)) return;
-            onChange(Math.min(max, Math.max(min, v)));
-          }}
-          className="w-full bg-transparent text-center text-lg font-bold tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        />
-        <button
-          type="button"
-          onClick={() => onChange(Math.min(max, value + 1))}
-          className="px-4 text-lg font-bold text-muted-foreground hover:bg-secondary hover:text-foreground"
-          aria-label={`Increase ${label}`}
-        >
-          +
+          Back to menu
         </button>
       </div>
-      {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
-    </label>
-  );
+    );
+  }
+
+  if (room.status === "lobby") {
+    return <Lobby room={room} players={players} selfId={selfId} onLeave={onExit} />;
+  }
+  return <RoomDraft room={room} players={players} selfId={selfId} />;
 }
 
-function TypeBadge({ type }: { type: string }) {
-  return (
-    <span
-      className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white"
-      style={{ backgroundColor: `var(--type-${type}, var(--muted))` }}
-    >
-      {type}
-    </span>
-  );
-}
+// ----------------- Solo (single-device) mode -----------------
+// Keeps the original local turn-based draft behavior (per-turn picks,
+// out-of-turn override, undo on slot click). Now uses the shared
+// PoolGrid with sort/filter.
 
-function HoverSprite({
-  entry,
-  className,
-}: {
-  entry: DraftEntry;
-  className?: string;
-}) {
-  const slugs = useMemo(
-    () => [entry.slug, ...(entry.altSlugs ?? [])],
-    [entry.slug, entry.altSlugs],
-  );
-  const [datas, setDatas] = useState<(PokemonData | null)[]>(() =>
-    slugs.map(() => null),
-  );
-  const [idx, setIdx] = useState(0);
-  const [hover, setHover] = useState(false);
+type Pick = { entryId: string; playerIdx: number };
 
-  useEffect(() => {
-    let active = true;
-    setDatas(slugs.map(() => null));
-    Promise.all(slugs.map((s) => fetchPokemon(s))).then((res) => {
-      if (active) setDatas(res);
+function SoloDraft({ onExit }: { onExit: () => void }) {
+  const [cfg, setCfg] = useState<Config>(DEFAULT_CONFIG);
+  const [pool, setPool] = useState<DraftEntry[] | null>(null);
+  const [picks, setPicks] = useState<Pick[]>([]);
+  const [usernames, setUsernames] = useState<string[]>([]);
+  const [manualPlayer, setManualPlayer] = useState<number | null>(null);
+
+  const totalSlots = cfg.players * 6;
+
+  const remainingPool = useMemo(() => {
+    if (!pool) return [];
+    const taken = new Set(picks.map((p) => p.entryId));
+    return pool.filter((e) => !taken.has(e.id));
+  }, [pool, picks]);
+
+  const teams = useMemo(() => {
+    const t: DraftEntry[][] = Array.from({ length: cfg.players }, () => []);
+    if (!pool) return t;
+    const byId = new Map(pool.map((e) => [e.id, e]));
+    for (const p of picks) {
+      const e = byId.get(p.entryId);
+      if (e && p.playerIdx < t.length) t[p.playerIdx].push(e);
+    }
+    return t;
+  }, [picks, pool, cfg.players]);
+
+  const autoPlayer = nextPlayerIndex(picks.length, cfg.players, cfg.pickOrder);
+  const activePlayer = manualPlayer ?? autoPlayer;
+  const draftComplete = picks.length >= totalSlots;
+
+  function startDraft() {
+    const rolled = rollPool(cfg);
+    setPool(rolled);
+    setPicks([]);
+    setManualPlayer(null);
+    setUsernames(Array.from({ length: cfg.players }, () => ""));
+    if (rolled.some((e) => e.shiny)) playShinyChime();
+  }
+
+  function reroll() {
+    if (!confirm("Re-roll the pool and clear all picks?")) return;
+    startDraft();
+  }
+
+  function backToConfig() {
+    if (!confirm("Return to configuration?")) return;
+    setPool(null);
+    setPicks([]);
+    setManualPlayer(null);
+  }
+
+  function canPick(entry: DraftEntry): boolean {
+    if (draftComplete) return false;
+    const team = teams[activePlayer] ?? [];
+    if (team.length >= 6) return false;
+    if (team.some((e) => e.speciesKey === entry.speciesKey)) return false;
+    return true;
+  }
+
+  function pick(entry: DraftEntry) {
+    if (!canPick(entry)) return;
+    setPicks((prev) => [...prev, { entryId: entry.id, playerIdx: activePlayer }]);
+    setManualPlayer(null);
+  }
+
+  function unpick(entryId: string) {
+    setPicks((prev) => prev.filter((p) => p.entryId !== entryId));
+  }
+
+  function selectPlayer(idx: number) {
+    if ((teams[idx] ?? []).length >= 6) return;
+    setManualPlayer(idx);
+  }
+
+  function setUsername(idx: number, name: string) {
+    setUsernames((prev) => {
+      const next = prev.slice();
+      next[idx] = name;
+      return next;
     });
-    return () => {
-      active = false;
-    };
-  }, [slugs]);
+  }
 
-  useEffect(() => {
-    if (!hover || slugs.length <= 1) return;
-    const id = window.setInterval(() => {
-      setIdx((i) => (i + 1) % slugs.length);
-    }, 1200);
-    return () => window.clearInterval(id);
-  }, [hover, slugs.length]);
+  if (!pool) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-3">
+        <button
+          onClick={onExit}
+          className="text-xs text-muted-foreground hover:text-accent"
+        >
+          ← Back to menu
+        </button>
+        <ConfigPanel cfg={cfg} setCfg={setCfg} onStart={startDraft} />
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    if (!hover) setIdx(0);
-  }, [hover]);
-
-  const pickSrc = (d: PokemonData | null) =>
-    entry.shiny ? d?.shinySprite ?? d?.sprite ?? null : d?.sprite ?? null;
-  const label = idx === 0 ? entry.name : slugs[idx].replace(/-/g, " ");
-  const anyLoaded = datas.some((d) => d);
+  const sidebarPlayers = teams.map((team, idx) => ({
+    id: String(idx),
+    label: usernames[idx]?.trim() || `Player ${idx + 1}`,
+    team,
+  }));
 
   return (
-    <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="relative h-full w-full"
-    >
-      {!anyLoaded && (
-        <div className="h-full w-full animate-pulse rounded bg-muted" />
-      )}
-      {datas.map((d, i) => {
-        const src = pickSrc(d);
-        if (!src) return null;
-        const visible = i === idx;
-        return (
-          <img
-            key={slugs[i]}
-            src={src}
-            alt={i === idx ? label : ""}
-            loading="lazy"
-            aria-hidden={!visible}
-            className={`${className ?? ""} absolute inset-0 transition-opacity duration-500 ease-in-out ${
-              visible ? "opacity-100" : "opacity-0"
-            }`}
-          />
-        );
-      })}
-      {hover && slugs.length > 1 && (
-        <span className="pointer-events-none absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-background/80 px-1 text-[9px] font-semibold capitalize text-foreground">
-          {label}
-        </span>
-      )}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs text-muted-foreground">
+          {draftComplete
+            ? "Draft complete!"
+            : `On the clock: ${sidebarPlayers[activePlayer]?.label}`}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={reroll}
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-secondary"
+          >
+            Re-roll Pool
+          </button>
+          <button
+            onClick={backToConfig}
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-secondary"
+          >
+            ← Config
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-6 md:grid-cols-[320px_1fr]">
+        <TeamsSidebar
+          players={sidebarPlayers}
+          activeIdx={activePlayer}
+          autoIdx={autoPlayer}
+          draftComplete={draftComplete}
+          onSelectPlayer={selectPlayer}
+          onUnpick={unpick}
+          onRenamePlayer={setUsername}
+          unpickEnabled
+          selectableOverride
+        />
+        <PoolGrid
+          pool={remainingPool}
+          canPick={canPick}
+          onPick={pick}
+          headerRight={
+            <span className="text-xs text-muted-foreground">
+              {picks.length}/{totalSlots} picks
+            </span>
+          }
+          headerLeft={
+            !draftComplete ? (
+              <p className="text-xs text-muted-foreground">
+                Click a Pokémon to draft it to{" "}
+                <span className="font-semibold text-foreground">
+                  {sidebarPlayers[activePlayer]?.label}
+                </span>
+                .
+              </p>
+            ) : null
+          }
+        />
+      </div>
     </div>
   );
 }
