@@ -51,7 +51,7 @@ export function ConfigPanel({
           min={1}
           max={8}
           onChange={(v) => setCfg((c) => ({ ...c, players: v }))}
-          hint="6 Pokémon per player"
+          hint="6 Picks per player"
         />
         <NumberField
           label="Extra options"
@@ -91,7 +91,7 @@ export function ConfigPanel({
         </div>
         <div className="sm:col-span-2">
           <ToggleField
-            label="Pokémon forms"
+            label="Forms"
             value={cfg.splitForms ? "split" : "unified"}
             options={[
               {
