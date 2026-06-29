@@ -77,7 +77,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Pokémon Champions Draft — Reg M-B Randomizer" },
+      { title: "Champions Draft Helper — Reg M-B Draft Randomizer" },
       {
         name: "description",
         content:
@@ -86,6 +86,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:site_name", content: "Pokémon Champions Draft" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { property: "og:title", content: "Champions Draft Helper — Reg M-B Draft Randomizer" },
+      { name: "twitter:title", content: "Champions Draft Helper — Reg M-B Draft Randomizer" },
+      { name: "description", content: "An unofficial fan-made draft assistant for Champions." },
+      { property: "og:description", content: "An unofficial fan-made draft assistant for Champions." },
+      { name: "twitter:description", content: "An unofficial fan-made draft assistant for Champions." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7b01dc21-779a-4591-99ac-b28858564de4/id-preview-7a548f9b--89bf2129-d334-4d15-8747-831d58d6a74f.lovable.app-1782696287075.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7b01dc21-779a-4591-99ac-b28858564de4/id-preview-7a548f9b--89bf2129-d334-4d15-8747-831d58d6a74f.lovable.app-1782696287075.png" },
     ],
     links: [
       {
