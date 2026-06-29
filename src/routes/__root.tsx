@@ -91,8 +91,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "An unofficial fan-made draft assistant for Champions." },
       { property: "og:description", content: "An unofficial fan-made draft assistant for Champions." },
       { name: "twitter:description", content: "An unofficial fan-made draft assistant for Champions." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b40a2889-f10c-4361-9069-79e20946c296/id-preview-6172ad25--89bf2129-d334-4d15-8747-831d58d6a74f.lovable.app-1782701484842.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b40a2889-f10c-4361-9069-79e20946c296/id-preview-6172ad25--89bf2129-d334-4d15-8747-831d58d6a74f.lovable.app-1782701484842.png" },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/e459e328-f65f-4fc9-a55a-78bb688d97e3" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/e459e328-f65f-4fc9-a55a-78bb688d97e3" },
     ],
     links: [
       {
