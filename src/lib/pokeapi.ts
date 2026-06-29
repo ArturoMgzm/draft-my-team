@@ -2,7 +2,7 @@
 // resources whenever you request them" guideline.
 // https://pokeapi.co/docs/v2#fairuse
 
-const CACHE_PREFIX = "pokeapi:v2:";
+const CACHE_PREFIX = "pokeapi:v3:";
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 export type PokemonData = {
@@ -11,6 +11,17 @@ export type PokemonData = {
   sprite: string | null;
   shinySprite: string | null;
   types: string[];
+  stats: {
+    hp: number;
+    attack: number;
+    defense: number;
+    specialAttack: number;
+    specialDefense: number;
+    speed: number;
+  };
+  bst: number;
+  abilities: string[]; // ability names (no hidden flag distinction)
+  moves: string[]; // moves learnable in version_group "champions" only
 };
 
 type CacheEntry<T> = { t: number; v: T };
@@ -72,7 +83,41 @@ export function fetchPokemon(slug: string): Promise<PokemonData | null> {
           };
         };
         types: { type: { name: string } }[];
+        stats: { base_stat: number; stat: { name: string } }[];
+        abilities: { ability: { name: string } }[];
+        moves: {
+          move: { name: string };
+          version_group_details: { version_group: { name: string } }[];
+        }[];
       };
+      const statMap: Record<string, number> = {};
+      for (const s of json.stats) statMap[s.stat.name] = s.base_stat;
+      const stats = {
+        hp: statMap["hp"] ?? 0,
+        attack: statMap["attack"] ?? 0,
+        defense: statMap["defense"] ?? 0,
+        specialAttack: statMap["special-attack"] ?? 0,
+        specialDefense: statMap["special-defense"] ?? 0,
+        speed: statMap["speed"] ?? 0,
+      };
+      const bst =
+        stats.hp +
+        stats.attack +
+        stats.defense +
+        stats.specialAttack +
+        stats.specialDefense +
+        stats.speed;
+      const moves = Array.from(
+        new Set(
+          json.moves
+            .filter((m) =>
+              m.version_group_details.some(
+                (v) => v.version_group.name === "champions",
+              ),
+            )
+            .map((m) => m.move.name),
+        ),
+      );
       const data: PokemonData = {
         id: json.id,
         name: json.name,
@@ -85,6 +130,12 @@ export function fetchPokemon(slug: string): Promise<PokemonData | null> {
           json.sprites.other?.home?.front_shiny ??
           json.sprites.front_shiny,
         types: json.types.map((t) => t.type.name),
+        stats,
+        bst,
+        abilities: Array.from(
+          new Set(json.abilities.map((a) => a.ability.name)),
+        ),
+        moves,
       };
       writeCache(slug, data);
       return data;
