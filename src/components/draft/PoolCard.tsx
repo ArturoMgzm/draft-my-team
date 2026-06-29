@@ -107,26 +107,39 @@ export function PoolCard({
     onSelectForm!((formIdx + 1) % forms.length);
   }
 
+  function handlePick() {
+    if (disabled || flipped) return;
+    onClick();
+  }
+
   return (
     <div className="relative aspect-[3/4.2] w-full" style={{ perspective: "1000px" }}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => {
-          if (flipped) return;
-          onClick();
+      {/* Not a <button> — it contains nested badge buttons, which is invalid
+          inside a real <button> and causes click events to misbehave. Using
+          role="button" + key handlers keeps it keyboard-accessible instead. */}
+      <div
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled}
+        aria-label={`${displayName}${disabled ? " (unavailable)" : ""}`}
+        onClick={handlePick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handlePick();
+          }
         }}
         onContextMenu={(e) => {
           e.preventDefault();
           setFlipped((f) => !f);
         }}
         title="Right-click to flip"
-        className={`group absolute inset-0 flex flex-col items-center rounded-xl border p-2 text-left transition ${
+        className={`group absolute inset-0 flex flex-col items-center rounded-xl border p-2 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-ring ${
           entry.shiny ? "shiny-frame !border-transparent" : "bg-card"
         } ${
           disabled
             ? "cursor-not-allowed border-border/40 opacity-40"
-            : "border-border hover:-translate-y-0.5 hover:border-accent hover:shadow-lg hover:shadow-accent/10"
+            : "cursor-pointer border-border hover:-translate-y-0.5 hover:border-accent hover:shadow-lg hover:shadow-accent/10"
         }`}
         style={{
           transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
@@ -145,7 +158,9 @@ export function PoolCard({
               onClick={cycleForm}
               title={hasFormSwitch ? "Click to toggle Mega form" : undefined}
               className={`absolute right-1.5 top-1.5 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground ${
-                hasFormSwitch ? "cursor-pointer hover:brightness-110" : ""
+                hasFormSwitch
+                  ? "cursor-pointer ring-1 ring-accent-foreground/0 hover:brightness-110 hover:ring-accent-foreground/40"
+                  : ""
               }`}
             >
               {isAltForm ? "Mega ✓" : "Mega"}
@@ -157,7 +172,9 @@ export function PoolCard({
               onClick={cycleForm}
               title={hasFormSwitch ? "Click to cycle forms" : undefined}
               className={`absolute left-1.5 top-1.5 rounded bg-secondary px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground ${
-                hasFormSwitch ? "cursor-pointer hover:text-foreground" : ""
+                hasFormSwitch
+                  ? "cursor-pointer ring-1 ring-foreground/0 hover:text-foreground hover:ring-foreground/30"
+                  : ""
               }`}
             >
               Multi {forms.length > 1 ? `${formIdx + 1}/${forms.length}` : ""}
@@ -208,7 +225,7 @@ export function PoolCard({
             <div className="text-[10px] text-muted-foreground">Loading…</div>
           )}
         </div>
-      </button>
+      </div>
     </div>
   );
 }
