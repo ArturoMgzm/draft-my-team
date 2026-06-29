@@ -68,7 +68,9 @@ function buildBaseEntries(splitForms: boolean): DraftEntry[] {
           slug: sp.slug,
           speciesKey: sp.slug,
           multiForm: true,
-          altSlugs: sp.forms.map((f) => f.slug),
+          // sp.forms always lists the base form first (slug === sp.slug) —
+          // exclude it here since entry.slug already covers the base form.
+          altSlugs: sp.forms.map((f) => f.slug).filter((slug) => slug !== sp.slug),
         });
       }
     } else {
