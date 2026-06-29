@@ -91,8 +91,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "An unofficial fan-made draft assistant for Champions." },
       { property: "og:description", content: "An unofficial fan-made draft assistant for Champions." },
       { name: "twitter:description", content: "An unofficial fan-made draft assistant for Champions." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7b01dc21-779a-4591-99ac-b28858564de4/id-preview-7a548f9b--89bf2129-d334-4d15-8747-831d58d6a74f.lovable.app-1782696287075.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7b01dc21-779a-4591-99ac-b28858564de4/id-preview-7a548f9b--89bf2129-d334-4d15-8747-831d58d6a74f.lovable.app-1782696287075.png" },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/1f642a24-ff2f-412c-a02f-07a6fc1437f8/id-preview-db7e0d79--89bf2129-d334-4d15-8747-831d58d6a74f.lovable.app-1782699682405.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/1f642a24-ff2f-412c-a02f-07a6fc1437f8/id-preview-db7e0d79--89bf2129-d334-4d15-8747-831d58d6a74f.lovable.app-1782699682405.png" },
     ],
     links: [
       {
