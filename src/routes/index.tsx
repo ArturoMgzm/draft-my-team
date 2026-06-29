@@ -23,19 +23,19 @@ import {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Pokémon Champions Draft — Reg M-B Randomizer" },
+      { title: "Champions Draft — Reg M-B Randomizer" },
       {
         name: "description",
         content:
-          "Shared-pool draft tool for Pokémon Champions Regulation M-B. Solo or multiplayer rooms with sort, filter, and configurable mega counts.",
+          "Shared-pool draft tool for Champions Regulation M-B. Solo or multiplayer rooms with sort, filter, and configurable mega counts.",
       },
-      { property: "og:title", content: "Pokémon Champions Draft" },
+      { property: "og:title", content: "Champions Draft" },
       {
         property: "og:description",
         content: "Turn-based shared-pool drafting for Reg M-B — solo or multiplayer.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:title", content: "Pokémon Champions Draft" },
+      { name: "twitter:title", content: "Champions Draft" },
     ],
   }),
   component: Page,
@@ -60,7 +60,7 @@ function Page() {
             className="text-left"
           >
             <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-              Pokémon <span className="text-primary">Champions</span> Draft
+              <span className="text-primary">Champions</span> Draft
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Shared-pool drafting · Regulation M-B
