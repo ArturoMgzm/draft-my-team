@@ -1,45 +1,144 @@
-## 1. Shiny polish (sprite border + sound)
+# Plan: Multiplayer Rooms + Sort/Filter + Cache Expansion
 
-**Visual**
-- Add a `shiny` variant to `PoolCard` and `TeamSlot` in `src/routes/index.tsx`: an animated gradient ring (gold → cyan → magenta) plus a soft outer glow. The existing ✨ badge stays.
-- Add `@keyframes shiny-shimmer` and a `.shiny-frame` utility in `src/styles.css` (rotating conic-gradient border, ~3s loop, `prefers-reduced-motion` falls back to a static gold ring).
-- Wrap the sprite in a dedicated frame div so the shimmer doesn't fight the type-color background already on the card.
+Big chunk of work. Splitting into three areas. Confirming scope before writing ~1000 lines of code.
 
-**Sound**
-- Add a short royalty-free sparkle SFX uploaded via `lovable-assets` → `src/assets/shiny.mp3.asset.json` (CC0 chime, ~1s; bundling the actual game jingle would conflict with the fan-project disclaimer in section 2).
-- New `src/lib/shiny-sound.ts`: lazy `HTMLAudioElement` singleton, exports `playShinyChime()`. Respects a `shinyMuted` flag in `localStorage` and ignores repeat calls within 1.5s so a roll containing multiple shinies chimes exactly once.
-- Call `playShinyChime()` from `rollPool`'s caller (`startDraft`) after state commits, only when at least one entry has `shiny: true`.
-- Header in `src/routes/index.tsx` gets a small 🔊 / 🔇 toggle button persisted to `localStorage`.
+## 1. Expand PokéAPI cache (foundation for sort/filter)
 
-## 2. Legal disclaimers + publish metadata
+Extend `PokemonData` and the `/pokemon/{slug}` fetch to also persist:
+- `stats`: `{ hp, attack, defense, specialAttack, specialDefense, speed }` (base_stat only, EVs dropped)
+- `bst`: sum of the six stats
+- `abilities`: `string[]` (names only, hidden flag kept as separate `hiddenAbilities`)
+- `moves`: `string[]` — only moves whose `version_group_details[].version_group.name === "champions"`
 
-**Footer + dedicated legal page**
-- Update the footer in `src/routes/index.tsx` to: "Pokémon and Pokémon character names are trademarks of Nintendo, Game Freak, and The Pokémon Company. This is an unofficial fan project, not affiliated with or endorsed by them. Pokémon data and sprites via PokéAPI." with a link to `/legal`.
-- New route `src/routes/legal.tsx` covering: fan-project status, non-commercial intent, trademark acknowledgements (Nintendo / Game Freak / TPC / Creatures Inc.), PokéAPI attribution + local-cache fair-use compliance, no warranty, takedown contact line (placeholder the user can fill in).
+Bumps cache prefix to `v3` so old entries get rebuilt once. No new endpoints (`/pokemon/{slug}` already returns all of this).
 
-**Site metadata (so the share card and tab title aren't "Lovable App")**
-- `src/routes/__root.tsx`: replace the template `title` / `description` / `og:*` defaults with real values; add `og:site_name` "Pokémon Champions Draft", `og:type: website`, `twitter:card: summary`.
-- `src/routes/index.tsx` `head()`: fill in matching `twitter:title`, `twitter:description`, `og:url`, and a `<link rel="canonical">` pointing at `https://poke-champions-draft.lovable.app/`.
-- `src/routes/legal.tsx` `head()`: own title/description/og/canonical per the head-meta rules (canonical on leaf only).
-- Favicon: generate a small Poké Ball SVG to `public/favicon.svg` and link it from `__root.tsx`.
+## 2. Sort + Filter UI (works in both solo and room modes, applies only to "remaining pool")
 
-**Publish step**
-- After the above lands, publish with `website_info_status: added_or_updated` and a summary naming title, description, OG, Twitter, favicon, and the new legal route.
+New `SortFilterBar` above the pool grid.
 
-## Files touched
+**Sort:** dropdown — Default (roll order), Alphabetical, BST, HP, Attack, Defense, Sp. Atk, Sp. Def, Speed, Type (groups by primary type).
 
-- `src/styles.css` — shiny shimmer keyframes + `.shiny-frame` utility
-- `src/lib/shiny-sound.ts` (new)
-- `src/assets/shiny.mp3.asset.json` (new, via `lovable-assets`)
-- `src/routes/index.tsx` — shiny border, chime trigger, mute toggle, footer disclaimer, metadata fill-in
-- `src/routes/legal.tsx` (new)
-- `src/routes/__root.tsx` — real site-wide metadata + favicon link
-- `public/favicon.svg` (new)
+**Filter:** filter-group builder.
+- Top-level mode: `AND` / `OR` between groups
+- Each group: mode `AND`/`OR` + list of conditions
+- Condition: `{ kind: "type" | "ability" | "move", value: string }`
+- "Add group" / "Add condition" / remove buttons
+- Ability and move pickers are searchable comboboxes populated from the cached data of currently-loaded pool entries (so the dropdown is bounded by the actual pool, not the whole API).
 
-## Out of scope (deferred)
+Pool grid renders two sections when any filter is active:
+- "Matches filters" (top)
+- "Other pokémon" (bottom, collapsible)
 
-- Multiplayer rooms (planned separately on the next turn).
+Both sections share the same card component and respect the sort. Picked pokémon are still removed from both.
 
-## Open question
+## 3. Multiplayer Rooms
 
-OK to use a generic CC0 sparkle SFX rather than the actual Pokémon shiny jingle? Bundling the game audio would itself be the kind of IP issue section 2 is meant to avoid.
+### Mode switcher on the config screen
+Three buttons at the top of the config: **Solo**, **Host Room**, **Join Room**.
+- Solo: unchanged.
+- Host Room: generates a 5-char A–Z 0–9 code; host edits the same config panel; lobby opens.
+- Join Room: prompts for code; opens lobby with read-only config view.
+
+Everyone (including host) is prompted for a username on entry.
+
+### Backend (Lovable Cloud)
+
+Tables (all GRANTed to `anon` + `authenticated` since this is anon-by-code, with `service_role` for the writer fn):
+
+- `draft_rooms`
+  - `id uuid pk`, `code text unique` (5 chars, indexed), `host_id uuid` (client-generated UUID stored in localStorage as the "device id"), `config jsonb`, `status text` (`lobby`|`drafting`|`complete`), `seed text`, `pool jsonb` (rolled `DraftEntry[]`), `picks jsonb` (`{playerId, entryId, ts}[]`), `order uuid[]` (player ids in turn order), `host_overrides_enabled bool`, `created_at`, `updated_at`
+- `draft_players`
+  - `id uuid pk` (client device id), `room_id uuid fk`, `username text`, `is_host bool`, `joined_at`
+
+Realtime: subscribe to `draft_rooms` row + `draft_players` for the room.
+
+### Writes via a single server function `applyRoomAction`
+(Already noted in security memory — room code is the access token; no auth.)
+
+Actions:
+- `create_room(config, host)` → returns `{code, roomId, hostId}`
+- `join_room(code, playerId, username)`
+- `update_username(playerId, username)`
+- `leave_room(playerId)`
+- `update_config(hostId, patch)` (lobby only)
+- `reorder_players(hostId, order[])`
+- `randomize_order(hostId)`
+- `kick_player(hostId, targetId)`
+- `start_draft(hostId)` (rolls pool, locks)
+- `cancel_draft(hostId)` → back to lobby
+- `make_pick(playerId, entryId)` — must be active player's turn (or host w/ override)
+- `undo_pick(hostId)` — only if host_overrides_enabled
+- `override_active_player(hostId, playerId)` — only if host_overrides_enabled
+- `toggle_host_overrides(hostId, bool)`
+- `redraft(hostId)` — re-rolls pool, clears picks, keeps players + order
+
+Server fn validates host-only actions by `hostId === room.host_id`. RLS denies direct table writes; reads allowed by `code` (anon SELECT scoped via policy `using (true)` since the code is the secret).
+
+### Room UI
+
+**Lobby view** (host):
+- Big code display, copy-to-clipboard
+- Player list with drag-handle reorder (use simple up/down arrows for v1 — faster to ship, no dnd lib) + "randomize order" button + kick button per player
+- Config panel (same component as solo, editable)
+- "Host overrides enabled" switch
+- Start button (disabled until ≥2 players)
+- Cancel room
+
+**Lobby view** (player):
+- Code display
+- Read-only config summary
+- Editable own username
+- Player list (read-only)
+- "Waiting for host…"
+
+**Drafting view**: same layout as solo, but:
+- Sidebar shows real usernames; active highlight from server `order[currentPickIndex]`
+- Pool clicks open a **confirm dialog** ("Draft Charizard?" → Confirm / Cancel) before issuing `make_pick`
+- Cards only clickable on your turn (or host if overrides on)
+- Sidebar player rows only clickable for host w/ overrides on
+- Undo (sprite click) only enabled for host w/ overrides on
+- "Host overrides" switch visible to host during draft
+
+**Complete view**: full-width grid of player teams (username + 6 sprites each), and below it a collapsible "Unpicked pool". Host sees a "Redraft (same players)" button.
+
+### Solo mode
+
+Unchanged behaviorally. All the existing turn/undo/active-override logic stays. Sort/filter applies. Confirm dialog is room-mode only.
+
+## File structure
+
+```text
+src/lib/
+  pokeapi.ts                      [expanded shape, v3 cache]
+  draft-engine.ts                 [pure rollPool + types extracted from index.tsx]
+  sort-filter.ts                  [sort + filter-group evaluator]
+  room-client.ts                  [client wrapper around applyRoomAction + realtime sub]
+  room.functions.ts               [createServerFn applyRoomAction]
+  room.server.ts                  [DB helpers using supabaseAdmin]
+src/components/draft/
+  HoverSprite.tsx                 [extracted]
+  PoolCard.tsx                    [extracted]
+  TeamSlot.tsx                    [extracted]
+  ConfigPanel.tsx                 [extracted, used in both solo + lobby]
+  SortFilterBar.tsx               [new]
+  PoolGrid.tsx                    [renders matches/non-matches sections]
+  Sidebar.tsx                     [player teams]
+  ConfirmPickDialog.tsx           [new, room only]
+  Lobby.tsx                       [new]
+  ResultsGrid.tsx                 [new, final teams view]
+src/hooks/
+  useRoom.ts                      [subscribe + actions]
+src/routes/
+  index.tsx                       [mode switcher; renders Solo / Host / Join]
+supabase/migrations/
+  <ts>_draft_rooms.sql
+```
+
+## Open questions before I build
+
+1. **Drag-and-drop vs arrows for player ordering** — I'll ship arrows (↑/↓ per row) + a "Randomize" button. Faster, no extra dep. OK?
+2. **Persistence of device identity** — I'll store a generated UUID in `localStorage` ("draft:deviceId") and use it as `player.id` / `host.id`. Reconnecting with the same browser keeps your seat. OK?
+3. **Inactivity / disconnect handling** — out of scope for v1; players stay in the room until the host kicks them.
+4. **Sort "Type"** — sorts by primary type alphabetically. OK?
+
+Anything to adjust before I start writing?
