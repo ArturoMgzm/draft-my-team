@@ -55,10 +55,7 @@ function evalCondition(cond: FilterCondition, data: PokemonData): boolean {
   return false;
 }
 
-export function evalFilter(
-  tree: FilterTree,
-  data: PokemonData | null | undefined,
-): boolean {
+export function evalFilter(tree: FilterTree, data: PokemonData | null | undefined): boolean {
   if (!filterHasConditions(tree)) return true;
   if (!data) return false;
   const groupResults = tree.groups
@@ -68,9 +65,7 @@ export function evalFilter(
       return g.mode === "AND" ? results.every(Boolean) : results.some(Boolean);
     });
   if (groupResults.length === 0) return true;
-  return tree.mode === "AND"
-    ? groupResults.every(Boolean)
-    : groupResults.some(Boolean);
+  return tree.mode === "AND" ? groupResults.every(Boolean) : groupResults.some(Boolean);
 }
 
 function sortValue(key: SortKey, data: PokemonData | null | undefined): number | string {
@@ -103,13 +98,14 @@ export function sortEntries(
   entries: DraftEntry[],
   key: SortKey,
   dataMap: Map<string, PokemonData | null>,
+  keyOf: (e: DraftEntry) => string = (e) => e.slug,
 ): DraftEntry[] {
   if (key === "default") return entries;
   const list = entries.slice();
   const stringKey = key === "name" || key === "type";
   list.sort((a, b) => {
-    const va = sortValue(key, dataMap.get(a.slug));
-    const vb = sortValue(key, dataMap.get(b.slug));
+    const va = sortValue(key, dataMap.get(keyOf(a)));
+    const vb = sortValue(key, dataMap.get(keyOf(b)));
     if (stringKey) {
       const sa = String(va);
       const sb = String(vb);
@@ -129,6 +125,7 @@ export function partitionByFilter(
   entries: DraftEntry[],
   tree: FilterTree,
   dataMap: Map<string, PokemonData | null>,
+  keyOf: (e: DraftEntry) => string = (e) => e.slug,
 ): { matches: DraftEntry[]; others: DraftEntry[] } {
   if (!filterHasConditions(tree)) {
     return { matches: entries, others: [] };
@@ -136,7 +133,7 @@ export function partitionByFilter(
   const matches: DraftEntry[] = [];
   const others: DraftEntry[] = [];
   for (const e of entries) {
-    (evalFilter(tree, dataMap.get(e.slug)) ? matches : others).push(e);
+    (evalFilter(tree, dataMap.get(keyOf(e))) ? matches : others).push(e);
   }
   return { matches, others };
 }

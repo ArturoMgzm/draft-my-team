@@ -5,19 +5,22 @@ import type { DraftEntry } from "@/lib/draft-engine";
 export function HoverSprite({
   entry,
   className,
+  activeIndex,
 }: {
   entry: DraftEntry;
   className?: string;
+  /** When provided, this index is shown and the internal hover-cycle is disabled. */
+  activeIndex?: number;
 }) {
   const slugs = useMemo(
     () => [entry.slug, ...(entry.altSlugs ?? [])],
     [entry.slug, entry.altSlugs],
   );
-  const [datas, setDatas] = useState<(PokemonData | null)[]>(() =>
-    slugs.map(() => null),
-  );
-  const [idx, setIdx] = useState(0);
+  const [datas, setDatas] = useState<(PokemonData | null)[]>(() => slugs.map(() => null));
+  const [hoverIdx, setHoverIdx] = useState(0);
   const [hover, setHover] = useState(false);
+  const controlled = activeIndex !== undefined;
+  const idx = controlled ? Math.min(activeIndex!, slugs.length - 1) : hoverIdx;
 
   useEffect(() => {
     let active = true;
@@ -31,16 +34,16 @@ export function HoverSprite({
   }, [slugs]);
 
   useEffect(() => {
-    if (!hover || slugs.length <= 1) return;
+    if (controlled || !hover || slugs.length <= 1) return;
     const id = window.setInterval(() => {
-      setIdx((i) => (i + 1) % slugs.length);
+      setHoverIdx((i) => (i + 1) % slugs.length);
     }, 1200);
     return () => window.clearInterval(id);
-  }, [hover, slugs.length]);
+  }, [controlled, hover, slugs.length]);
 
   useEffect(() => {
-    if (!hover) setIdx(0);
-  }, [hover]);
+    if (!controlled && !hover) setHoverIdx(0);
+  }, [controlled, hover]);
 
   const pickSrc = (d: PokemonData | null) =>
     entry.shiny ? (d?.shinySprite ?? d?.sprite ?? null) : (d?.sprite ?? null);
@@ -49,8 +52,8 @@ export function HoverSprite({
 
   return (
     <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseEnter={() => !controlled && setHover(true)}
+      onMouseLeave={() => !controlled && setHover(false)}
       className="relative h-full w-full"
     >
       {!anyLoaded && <div className="h-full w-full animate-pulse rounded bg-muted" />}
@@ -71,7 +74,7 @@ export function HoverSprite({
           />
         );
       })}
-      {hover && slugs.length > 1 && (
+      {!controlled && hover && slugs.length > 1 && (
         <span className="pointer-events-none absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-background/80 px-1 text-[9px] font-semibold capitalize text-foreground">
           {label}
         </span>

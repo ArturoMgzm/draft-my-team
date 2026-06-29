@@ -37,9 +37,7 @@ const MEGA_FORM_OVERRIDES: Record<string, string> = {
   slowbro: "slowbro",
 };
 
-const MEGA_CAPABLE_SPECIES = new Set(
-  REG_MB_POOL.filter((s) => s.mega).map((s) => s.slug),
-);
+const MEGA_CAPABLE_SPECIES = new Set(REG_MB_POOL.filter((s) => s.mega).map((s) => s.slug));
 
 export function shuffle<T>(arr: T[]): T[] {
   const a = arr.slice();
@@ -124,21 +122,28 @@ export function rollPool(cfg: Config): DraftEntry[] {
     chosen = [...nonMegas, ...megas];
   } else {
     const lockedMegas = megaPool.slice(0, guaranteedMegas);
-    const rest = shuffle([
-      ...megaPool.slice(guaranteedMegas),
-      ...nonMegaPool,
-    ]).slice(0, totalNeeded - guaranteedMegas);
+    const rest = shuffle([...megaPool.slice(guaranteedMegas), ...nonMegaPool]).slice(
+      0,
+      totalNeeded - guaranteedMegas,
+    );
     chosen = [...lockedMegas, ...rest];
   }
   chosen = chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 4096 }));
   return shuffle(chosen);
 }
 
-export function nextPlayerIndex(
-  pickIdx: number,
-  playerCount: number,
-  order: PickOrder,
-): number {
+// Every viewable form for an entry, base form first. For non-mega/non-multi
+// entries this is just the single base slug. Used to drive the click-to-flip
+// form switcher on PoolCard; drafting always uses entry.id regardless of
+// which form is currently being viewed.
+export function getFormSlugs(entry: DraftEntry): string[] {
+  if (entry.altSlugs && entry.altSlugs.length > 0) {
+    return [entry.slug, ...entry.altSlugs];
+  }
+  return [entry.slug];
+}
+
+export function nextPlayerIndex(pickIdx: number, playerCount: number, order: PickOrder): number {
   if (playerCount <= 0) return 0;
   if (order === "sequential") return pickIdx % playerCount;
   const round = Math.floor(pickIdx / playerCount);
