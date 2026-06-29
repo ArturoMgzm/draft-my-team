@@ -100,46 +100,77 @@ export function PoolCard({
       : prettifySlug(activeSlug)
     : entry.name;
 
-  function cycleForm(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  function cycleForm() {
     if (!hasFormSwitch) return;
     onSelectForm!((formIdx + 1) % forms.length);
   }
 
-  function handlePick() {
-    if (disabled || flipped) return;
-    onClick();
-  }
-
   return (
-    <div className="relative aspect-[3/4.2] w-full" style={{ perspective: "1000px" }}>
-      {/* Not a <button> — it contains nested badge buttons, which is invalid
-          inside a real <button> and causes click events to misbehave. Using
-          role="button" + key handlers keeps it keyboard-accessible instead. */}
-      <div
-        role="button"
-        tabIndex={disabled ? -1 : 0}
-        aria-disabled={disabled}
-        aria-label={`${displayName}${disabled ? " (unavailable)" : ""}`}
-        onClick={handlePick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            handlePick();
-          }
+    <div
+      className={`group relative aspect-[3/4.2] w-full rounded-xl border p-2 transition ${
+        entry.shiny ? "shiny-frame !border-transparent" : "bg-card"
+      } ${
+        disabled
+          ? "border-border/40 opacity-40"
+          : "border-border hover:-translate-y-0.5 hover:border-accent hover:shadow-lg hover:shadow-accent/10"
+      }`}
+      style={{ perspective: "1000px" }}
+    >
+      {/* Badges live in their own layer, stacked above the flip card, and are
+          never nested inside the pick button below — so there's no shared
+          ancestor click/transform to race against. */}
+      {entry.isMega && (
+        <button
+          type="button"
+          onClick={cycleForm}
+          disabled={!hasFormSwitch}
+          title={hasFormSwitch ? "Click to toggle Mega form" : undefined}
+          className={`absolute right-1.5 top-1.5 z-10 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground ${
+            hasFormSwitch
+              ? "cursor-pointer ring-1 ring-accent-foreground/0 hover:brightness-110 hover:ring-accent-foreground/40"
+              : ""
+          }`}
+        >
+          {isAltForm ? "Mega ✓" : "Mega"}
+        </button>
+      )}
+      {entry.multiForm && (
+        <button
+          type="button"
+          onClick={cycleForm}
+          disabled={!hasFormSwitch}
+          title={hasFormSwitch ? "Click to cycle forms" : undefined}
+          className={`absolute left-1.5 top-1.5 z-10 rounded bg-secondary px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground ${
+            hasFormSwitch
+              ? "cursor-pointer ring-1 ring-foreground/0 hover:text-foreground hover:ring-foreground/30"
+              : ""
+          }`}
+        >
+          Multi {forms.length > 1 ? `${formIdx + 1}/${forms.length}` : ""}
+        </button>
+      )}
+      {entry.shiny && (
+        <span className="absolute right-1.5 bottom-1.5 z-10 text-sm" title="Shiny — 1 in 4096!">
+          ✨
+        </span>
+      )}
+
+      {/* Pick + flip surface. Sits beneath the badge layer (z-0) and never
+          contains the badge buttons, so badge clicks can't bubble into it. */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          if (flipped) return;
+          onClick();
         }}
         onContextMenu={(e) => {
           e.preventDefault();
           setFlipped((f) => !f);
         }}
         title="Right-click to flip"
-        className={`group absolute inset-0 flex flex-col items-center rounded-xl border p-2 text-left transition outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-          entry.shiny ? "shiny-frame !border-transparent" : "bg-card"
-        } ${
-          disabled
-            ? "cursor-not-allowed border-border/40 opacity-40"
-            : "cursor-pointer border-border hover:-translate-y-0.5 hover:border-accent hover:shadow-lg hover:shadow-accent/10"
+        className={`relative z-0 flex h-full w-full flex-col items-center text-left ${
+          disabled ? "cursor-not-allowed" : "cursor-pointer"
         }`}
         style={{
           transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
@@ -149,42 +180,9 @@ export function PoolCard({
       >
         {/* Front face */}
         <div
-          className="absolute inset-0 flex flex-col items-center p-2"
+          className="absolute inset-0 flex flex-col items-center"
           style={{ backfaceVisibility: "hidden" }}
         >
-          {entry.isMega && (
-            <button
-              type="button"
-              onClick={cycleForm}
-              title={hasFormSwitch ? "Click to toggle Mega form" : undefined}
-              className={`absolute right-1.5 top-1.5 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground ${
-                hasFormSwitch
-                  ? "cursor-pointer ring-1 ring-accent-foreground/0 hover:brightness-110 hover:ring-accent-foreground/40"
-                  : ""
-              }`}
-            >
-              {isAltForm ? "Mega ✓" : "Mega"}
-            </button>
-          )}
-          {entry.multiForm && (
-            <button
-              type="button"
-              onClick={cycleForm}
-              title={hasFormSwitch ? "Click to cycle forms" : undefined}
-              className={`absolute left-1.5 top-1.5 rounded bg-secondary px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground ${
-                hasFormSwitch
-                  ? "cursor-pointer ring-1 ring-foreground/0 hover:text-foreground hover:ring-foreground/30"
-                  : ""
-              }`}
-            >
-              Multi {forms.length > 1 ? `${formIdx + 1}/${forms.length}` : ""}
-            </button>
-          )}
-          {entry.shiny && (
-            <span className="absolute right-1.5 bottom-1.5 text-sm" title="Shiny — 1 in 4096!">
-              ✨
-            </span>
-          )}
           <div className="flex aspect-square w-full items-center justify-center">
             <HoverSprite
               entry={entry}
@@ -209,7 +207,7 @@ export function PoolCard({
 
         {/* Back face — base stats for the currently viewed form */}
         <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-2.5"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-0.5"
           style={{
             backfaceVisibility: "hidden",
             transform: "rotateY(180deg)",
@@ -225,7 +223,7 @@ export function PoolCard({
             <div className="text-[10px] text-muted-foreground">Loading…</div>
           )}
         </div>
-      </div>
+      </button>
     </div>
   );
 }
