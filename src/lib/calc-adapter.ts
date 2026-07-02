@@ -146,6 +146,60 @@ export function slugToMoveName(slug: string): string {
     .join(" ");
 }
 
+// ---- Natures (Champions calls this "Stat Alignment") --------------------
+
+export type NatureStatKey = "atk" | "def" | "spa" | "spd" | "spe";
+
+export type NatureInfo = {
+  name: string;
+  /** Stat boosted 10%, or null for the 5 neutral natures. */
+  plus: NatureStatKey | null;
+  /** Stat reduced 10%, or null for the 5 neutral natures. */
+  minus: NatureStatKey | null;
+};
+
+// The standard 25-nature table (verified against @smogon/calc's own
+// GEN.natures data). The 5 "neutral" natures (Hardy, Docile, Serious,
+// Bashful, Quirky) boost and reduce the same stat, which cancels out to
+// no effect — represented here as plus/minus: null for a 1.0x multiplier.
+export const NATURES: NatureInfo[] = [
+  { name: "Hardy", plus: null, minus: null },
+  { name: "Lonely", plus: "atk", minus: "def" },
+  { name: "Brave", plus: "atk", minus: "spe" },
+  { name: "Adamant", plus: "atk", minus: "spa" },
+  { name: "Naughty", plus: "atk", minus: "spd" },
+  { name: "Bold", plus: "def", minus: "atk" },
+  { name: "Docile", plus: null, minus: null },
+  { name: "Relaxed", plus: "def", minus: "spe" },
+  { name: "Impish", plus: "def", minus: "spa" },
+  { name: "Lax", plus: "def", minus: "spd" },
+  { name: "Timid", plus: "spe", minus: "atk" },
+  { name: "Hasty", plus: "spe", minus: "def" },
+  { name: "Serious", plus: null, minus: null },
+  { name: "Jolly", plus: "spe", minus: "spa" },
+  { name: "Naive", plus: "spe", minus: "spd" },
+  { name: "Modest", plus: "spa", minus: "atk" },
+  { name: "Mild", plus: "spa", minus: "def" },
+  { name: "Quiet", plus: "spa", minus: "spe" },
+  { name: "Bashful", plus: null, minus: null },
+  { name: "Rash", plus: "spa", minus: "spd" },
+  { name: "Calm", plus: "spd", minus: "atk" },
+  { name: "Gentle", plus: "spd", minus: "def" },
+  { name: "Sassy", plus: "spd", minus: "spe" },
+  { name: "Careful", plus: "spd", minus: "spa" },
+  { name: "Quirky", plus: null, minus: null },
+];
+
+const NATURES_BY_NAME = new Map(NATURES.map((n) => [n.name, n]));
+
+export function natureMultiplier(natureName: string | undefined, stat: NatureStatKey): number {
+  const nature = natureName ? NATURES_BY_NAME.get(natureName) : undefined;
+  if (!nature) return 1;
+  if (nature.plus === stat) return 1.1;
+  if (nature.minus === stat) return 0.9;
+  return 1;
+}
+
 // ---- Side config used by the sidebar ------------------------------------
 
 export type SideConfig = {
@@ -153,6 +207,7 @@ export type SideConfig = {
   ability?: string;
   item?: string;
   isMega?: boolean;
+  nature?: string;
   sp: SpAlloc;
   status?: "" | "brn" | "par" | "psn" | "tox" | "slp" | "frz";
   boosts?: Partial<SpAlloc>;
@@ -193,7 +248,7 @@ function buildPokemon(cfg: SideConfig): Pokemon {
   // that in resolveMegaName). Item stays as the held item.
   return new Pokemon(GEN, cfg.speciesName, {
     level: 50,
-    nature: "Hardy",
+    nature: cfg.nature || "Hardy",
     ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 },
     evs: evsFromSp(cfg.sp),
     ability: cfg.ability,
@@ -300,18 +355,21 @@ function safeDesc(r: Result): string {
   }
 }
 
-// Final stat at Level 50 with a neutral nature and 31 IVs, given a base
-// stat and SP investment. Mirrors the standard formula so the UI can show
-// a live "base -> final" readout next to each SP slider:
-//   floor(floor((2*base + IV + floor(EV/4)) * level/100) * nature) + mod
-// HP adds level+10 instead of the flat +5 non-HP stats get, and has no
-// nature multiplier. EV = SP * 8 (see evsFromSp above for why 8 and not 4).
-export function computeStatAtL50(base: number, sp: number, isHp: boolean): number {
+// Final stat at Level 50 with 31 IVs, given a base stat, SP investment, and
+// nature multiplier. Mirrors the standard formula so the UI can show a live
+// "base -> final" readout next to each SP slider:
+//   floor((floor((2*base + IV + floor(EV/4)) * level/100) + 5) * nature)
+// HP adds level+10 instead of the flat +5 non-HP stats get, and is never
+// affected by nature (verified against @smogon/calc: the +5 non-HP offset
+// is applied *before* the nature multiplier, not after).
+// EV = SP * 8 (see evsFromSp above for why 8 and not 4).
+export function computeStatAtL50(base: number, sp: number, isHp: boolean, natureMult = 1): number {
   const ev = Math.max(0, Math.min(SP_MAX_PER_STAT, sp)) * 8;
   const iv = 31;
   const inner = 2 * base + iv + Math.floor(ev / 4);
   const scaled = Math.floor((inner * 50) / 100);
-  return isHp ? scaled + 50 + 10 : scaled + 5;
+  if (isHp) return scaled + 50 + 10;
+  return Math.floor((scaled + 5) * natureMult);
 }
 
 export const WEATHERS = ["", "Sun", "Rain", "Sand", "Snow", "Harsh Sunshine", "Heavy Rain"];
