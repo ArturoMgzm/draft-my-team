@@ -9,6 +9,7 @@ import { TeamsSidebar } from "./TeamsSidebar";
 import { PoolGrid } from "./PoolGrid";
 import { ResultsGrid } from "./ResultsGrid";
 import { playShinyChime } from "@/lib/shiny-sound";
+import { CalcSidebar } from "@/components/calc/CalcSidebar";
 
 export function RoomDraft({
   room,
@@ -23,6 +24,7 @@ export function RoomDraft({
   const [pendingPick, setPendingPick] = useState<DraftEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [calcOpen, setCalcOpen] = useState(false);
 
   const orderedIds = (room.player_order ?? []).filter(Boolean);
   const orderedPlayers = useMemo(() => {
@@ -156,7 +158,14 @@ export function RoomDraft({
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-[320px_1fr]">
+    <div className="relative grid gap-6 md:grid-cols-[320px_1fr]">
+      <button
+        onClick={() => setCalcOpen(true)}
+        className="fixed bottom-4 right-4 z-30 rounded-full border border-accent/40 bg-accent/20 px-4 py-2 text-xs font-semibold text-accent shadow-lg hover:bg-accent/30"
+      >
+        🧮 Calculator
+      </button>
+      <CalcSidebar pool={room.pool ?? []} open={calcOpen} onClose={() => setCalcOpen(false)} />
       <TeamsSidebar
         players={sidebarPlayers}
         activeIdx={activeIdx}

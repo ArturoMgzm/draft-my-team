@@ -13,6 +13,7 @@ import { PoolGrid } from "@/components/draft/PoolGrid";
 import { TeamsSidebar } from "@/components/draft/TeamsSidebar";
 import { Lobby } from "@/components/draft/Lobby";
 import { RoomDraft } from "@/components/draft/RoomDraft";
+import { CalcSidebar } from "@/components/calc/CalcSidebar";
 import { useRoom } from "@/hooks/useRoom";
 import {
   applyRoomAction,
@@ -317,6 +318,7 @@ function SoloDraft({ onExit }: { onExit: () => void }) {
   const [picks, setPicks] = useState<Pick[]>([]);
   const [usernames, setUsernames] = useState<string[]>([]);
   const [manualPlayer, setManualPlayer] = useState<number | null>(null);
+  const [calcOpen, setCalcOpen] = useState(false);
 
   const totalSlots = cfg.players * 6;
 
@@ -434,6 +436,12 @@ function SoloDraft({ onExit }: { onExit: () => void }) {
           >
             ← Config
           </button>
+          <button
+            onClick={() => setCalcOpen(true)}
+            className="rounded-md border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/20"
+          >
+            🧮 Calculator
+          </button>
         </div>
       </div>
       <div className="grid gap-6 md:grid-cols-[320px_1fr]">
@@ -470,6 +478,7 @@ function SoloDraft({ onExit }: { onExit: () => void }) {
           }
         />
       </div>
+      <CalcSidebar pool={pool} open={calcOpen} onClose={() => setCalcOpen(false)} />
     </div>
   );
 }
