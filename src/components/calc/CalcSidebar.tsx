@@ -348,20 +348,30 @@ function SideCard({
               const final =
                 base !== null ? computeStatAtL50(base, state.sp[key], key === "hp", mult) : null;
               const value = state.sp[key];
-              // Each slider's own max shrinks as the other five stats eat
-              // into the shared 66-point budget, so it's mechanically
-              // impossible to drag past what's actually available — the
-              // fill simply stops advancing once the budget runs out,
-              // rather than allowing an "over budget" state to happen at all.
-              const maxForThisStat = Math.min(SP_MAX_PER_STAT, value + spBudgetLeft);
+              // The highest value this stat could actually reach right now,
+              // given what the other five stats have already spent from the
+              // shared 66-point budget.
+              const effectiveMax = Math.min(SP_MAX_PER_STAT, value + spBudgetLeft);
               const fillPct = (value / SP_MAX_PER_STAT) * 100;
               const color = STAT_COLORS[key];
               const isBoosted = mult > 1;
               const isReduced = mult < 1;
+              // Every slider's own scale (0-32) stays fixed and independent
+              // of the others — only the *committed* value is clamped to
+              // effectiveMax. Shrinking the <input>'s own max attribute
+              // instead would make the browser reposition the thumb using
+              // that smaller max as its 100% point (e.g. thumb snaps to the
+              // far right at just 2/32), which is what caused the "funny"
+              // jump-to-50%/100% behavior — the thumb's native position and
+              // the color fill were being scaled against two different
+              // numbers. Clamping only the value keeps both in sync: you can
+              // keep dragging past the cap, but the fill simply stops
+              // advancing right at the true 2/32 position instead of lying
+              // about how much room is left.
               const setValue = (next: number) =>
                 setState((s) => ({
                   ...s,
-                  sp: { ...s.sp, [key]: Math.max(0, Math.min(maxForThisStat, next)) },
+                  sp: { ...s.sp, [key]: Math.max(0, Math.min(effectiveMax, next)) },
                 }));
               return (
                 <div key={key} className="rounded-md border border-border bg-background/40 p-2">
@@ -409,7 +419,7 @@ function SideCard({
                     <input
                       type="range"
                       min={0}
-                      max={maxForThisStat}
+                      max={SP_MAX_PER_STAT}
                       value={value}
                       onChange={(e) => setValue(Number(e.target.value))}
                       className="stat-range flex-1"
@@ -423,7 +433,7 @@ function SideCard({
                     <button
                       type="button"
                       onClick={() => setValue(value + 1)}
-                      disabled={value >= maxForThisStat}
+                      disabled={value >= effectiveMax}
                       className="stat-step-btn"
                       aria-label={`Increase ${label}`}
                     >
