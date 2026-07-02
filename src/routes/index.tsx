@@ -13,6 +13,7 @@ import { PoolGrid } from "@/components/draft/PoolGrid";
 import { TeamsSidebar } from "@/components/draft/TeamsSidebar";
 import { Lobby } from "@/components/draft/Lobby";
 import { RoomDraft } from "@/components/draft/RoomDraft";
+import { CalcSidebar } from "@/components/calc/CalcSidebar";
 import { useRoom } from "@/hooks/useRoom";
 import {
   applyRoomAction,
