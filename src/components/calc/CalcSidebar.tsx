@@ -46,10 +46,9 @@ const EMPTY_SIDE: SideDraft = {
 // Attacker/Defender each get a distinct accent pulled from the existing
 // design tokens (poké-red primary, chart-2 teal) so the two sides read as
 // visually distinct at a glance without introducing any new colors.
-const SIDE_ACCENT: Record
-  SideKey,
-  { border: string; bg: string; text: string; ring: string; dot: string }
-> = {
+type SideAccentStyle = { border: string; bg: string; text: string; ring: string; dot: string };
+
+const SIDE_ACCENT: Record<SideKey, SideAccentStyle> = {
   atk: {
     border: "border-primary/50",
     bg: "bg-primary/10",
