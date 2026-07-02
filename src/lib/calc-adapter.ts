@@ -97,11 +97,35 @@ const SPECIES_OVERRIDES: Record<string, string> = {
   "jangmo-o": "Jangmo-o",
   "hakamo-o": "Hakamo-o",
   "kommo-o": "Kommo-o",
-  "aegislash-shield": "Aegislash",
+  // Aegislash has NO plain "Aegislash" species in @smogon/calc's data — only
+  // the two stance-specific formes (plus "Aegislash-Both", unused here)
+  // exist, so the Shield forme must keep its suffix.
+  "aegislash-shield": "Aegislash-Shield",
   "aegislash-blade": "Aegislash-Blade",
   "floette-eternal": "Floette-Eternal",
   "basculegion-male": "Basculegion",
   "basculegion-female": "Basculegion-F",
+  // The species below all follow the same "default form has NO suffix in
+  // Showdown/@smogon-calc's data, but PokeAPI's slug still gives it one"
+  // pattern — the generic slug->name conversion produces a name that
+  // simply doesn't exist as a species, causing the calc to throw. Found by
+  // testing every species/form/mega slug in the pool against the real
+  // calc engine end to end (not just spot-checking the reported ones).
+  "gourgeist-average": "Gourgeist",
+  "lycanroc-midday": "Lycanroc",
+  "maushold-family-of-four": "Maushold-Four",
+  "maushold-family-of-three": "Maushold",
+  "meowstic-male": "Meowstic",
+  "meowstic-female": "Meowstic-F",
+  "meowstic-male-mega": "Meowstic-M-Mega",
+  "meowstic-female-mega": "Meowstic-F-Mega",
+  "mimikyu-disguised": "Mimikyu",
+  "morpeko-full-belly": "Morpeko",
+  "palafin-zero": "Palafin",
+  "pyroar-male": "Pyroar",
+  "tauros-paldea-combat-breed": "Tauros-Paldea-Combat",
+  "tauros-paldea-blaze-breed": "Tauros-Paldea-Blaze",
+  "tauros-paldea-aqua-breed": "Tauros-Paldea-Aqua",
 };
 
 function titleCasePart(s: string): string {
