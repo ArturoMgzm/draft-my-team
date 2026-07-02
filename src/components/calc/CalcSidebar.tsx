@@ -540,3 +540,278 @@ function useItemSprite(name: string): ItemData | null {
     let alive = true;
     void fetchItem(itemNameToSlug(name)).then((d) => {
       if (alive) setData(d);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [name]);
+  return data;
+}
+
+// -------------------- Field panel --------------------
+
+function FieldPanel({
+  field,
+  setField,
+}: {
+  field: FieldConfig;
+  setField: (updater: (f: FieldConfig) => FieldConfig) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-card/60 p-3">
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        Field
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <LabeledSelect
+          label="Format"
+          value={field.gameType}
+          onChange={(v) => setField((f) => ({ ...f, gameType: v as "Singles" | "Doubles" }))}
+          options={["Doubles", "Singles"]}
+        />
+        <LabeledSelect
+          label="Weather"
+          value={field.weather ?? ""}
+          onChange={(v) => setField((f) => ({ ...f, weather: v || undefined }))}
+          options={WEATHERS}
+          format={(v) => v || "None"}
+        />
+        <LabeledSelect
+          label="Terrain"
+          value={field.terrain ?? ""}
+          onChange={(v) => setField((f) => ({ ...f, terrain: v || undefined }))}
+          options={TERRAINS}
+          format={(v) => (v ? `${v} Terrain` : "None")}
+        />
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+        <div
+          className={`space-y-1 rounded-md border ${SIDE_ACCENT.atk.border} bg-background/40 p-2`}
+        >
+          <div
+            className={`text-[10px] font-semibold uppercase tracking-wider ${SIDE_ACCENT.atk.text}`}
+          >
+            Attacker side
+          </div>
+          <Checkbox
+            label="Tailwind"
+            checked={!!field.atk.isTailwind}
+            onChange={(v) => setField((f) => ({ ...f, atk: { ...f.atk, isTailwind: v } }))}
+          />
+          <Checkbox
+            label="Helping Hand"
+            checked={!!field.atk.isHelpingHand}
+            onChange={(v) => setField((f) => ({ ...f, atk: { ...f.atk, isHelpingHand: v } }))}
+          />
+        </div>
+        <div
+          className={`space-y-1 rounded-md border ${SIDE_ACCENT.def.border} bg-background/40 p-2`}
+        >
+          <div
+            className={`text-[10px] font-semibold uppercase tracking-wider ${SIDE_ACCENT.def.text}`}
+          >
+            Defender side
+          </div>
+          <Checkbox
+            label="Reflect"
+            checked={!!field.def.isReflect}
+            onChange={(v) => setField((f) => ({ ...f, def: { ...f.def, isReflect: v } }))}
+          />
+          <Checkbox
+            label="Light Screen"
+            checked={!!field.def.isLightScreen}
+            onChange={(v) => setField((f) => ({ ...f, def: { ...f.def, isLightScreen: v } }))}
+          />
+          <Checkbox
+            label="Aurora Veil"
+            checked={!!field.def.isAuroraVeil}
+            onChange={(v) => setField((f) => ({ ...f, def: { ...f.def, isAuroraVeil: v } }))}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Checkbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-1.5">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+// -------------------- Results --------------------
+
+function Results({
+  attacker,
+  defender,
+  field,
+  pool,
+}: {
+  attacker: SideDraft;
+  defender: SideDraft;
+  field: FieldConfig;
+  pool: DraftEntry[];
+}) {
+  const aEntry = pool.find((e) => e.id === attacker.entryId) ?? null;
+  const dEntry = pool.find((e) => e.id === defender.entryId) ?? null;
+  const aFormName = aEntry ? formNameFor(aEntry, attacker.formIdx) : null;
+  const dFormName = dEntry ? formNameFor(dEntry, defender.formIdx) : null;
+
+  const results = useMemo<(MoveResult | null)[]>(() => {
+    if (!aEntry || !dEntry) return [];
+    const aName = speciesNameFor(aEntry, attacker.formIdx);
+    const dName = speciesNameFor(dEntry, defender.formIdx);
+    const aCfg: SideConfig = {
+      speciesName: aName,
+      ability: attacker.ability || undefined,
+      item: attacker.item || undefined,
+      nature: attacker.nature,
+      sp: attacker.sp,
+      status: attacker.status,
+    };
+    const dCfg: SideConfig = {
+      speciesName: dName,
+      ability: defender.ability || undefined,
+      item: defender.item || undefined,
+      nature: defender.nature,
+      sp: defender.sp,
+      status: defender.status,
+    };
+    return attacker.moves.map((mv) => (mv ? runCalc(aCfg, dCfg, mv, field) : null));
+  }, [attacker, defender, field, aEntry, dEntry]);
+
+  const anySelected = attacker.entryId && defender.entryId;
+  if (!anySelected) {
+    return (
+      <section className="rounded-xl border border-dashed border-border bg-card/30 p-4 text-center text-xs text-muted-foreground">
+        Pick an attacker and defender to see damage rolls.
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-card/60 p-3">
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+          Results
+        </span>
+        {aFormName && dFormName && (
+          <span className="truncate pl-2 text-[10px] text-muted-foreground">
+            <span className={SIDE_ACCENT.atk.text}>{aFormName}</span>
+            {" → "}
+            <span className={SIDE_ACCENT.def.text}>{dFormName}</span>
+          </span>
+        )}
+      </div>
+      <ul className="space-y-1.5">
+        {attacker.moves.map((mv, i) => {
+          const r = results[i];
+          if (!mv) {
+            return (
+              <li
+                key={i}
+                className="rounded-md border border-dashed border-border/70 bg-background/30 px-2 py-1.5 text-[11px] text-muted-foreground"
+              >
+                Move slot {i + 1} empty
+              </li>
+            );
+          }
+          if (!r) {
+            return (
+              <li
+                key={i}
+                className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1.5 text-[11px] text-primary"
+              >
+                {slugToMoveName(mv)} — calc error (unsupported name?)
+              </li>
+            );
+          }
+          return <MoveResultRow key={i} result={r} />;
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function MoveResultRow({ result }: { result: MoveResult }) {
+  if (result.immune) {
+    return (
+      <li className="rounded-md border border-border bg-background/40 px-2 py-1.5 text-[11px]">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-semibold">{result.moveName}</span>
+          <span className="tabular-nums text-muted-foreground">0.0%</span>
+        </div>
+        <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-secondary" />
+        <div className="mt-1 text-[10px] text-muted-foreground">No effect — immune</div>
+      </li>
+    );
+  }
+  const clampedMax = Math.min(100, result.maxPct);
+  const barColor =
+    result.maxPct >= 100
+      ? "bg-primary"
+      : result.maxPct >= 50
+        ? "bg-accent"
+        : "bg-muted-foreground/60";
+  return (
+    <li className="rounded-md border border-border bg-background/40 px-2 py-1.5 text-[11px]">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-semibold">{result.moveName}</span>
+        <span className="tabular-nums">
+          {result.minPct.toFixed(1)}–{result.maxPct.toFixed(1)}%
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-secondary">
+        <div className={`h-full ${barColor}`} style={{ width: `${clampedMax}%` }} />
+      </div>
+      {result.koChance && (
+        <div className="mt-1 text-[10px] text-muted-foreground">{result.koChance}</div>
+      )}
+    </li>
+  );
+}
+
+// -------------------- Helpers --------------------
+
+// Resolves the exact species name @smogon/calc expects for whichever form
+// (base / alt-form / specific Mega variant) is currently selected on this
+// side — not just whatever form the entry happened to default to.
+function speciesNameFor(entry: DraftEntry, formIdx: number): string {
+  const options = getFormOptions(entry);
+  const active = options[Math.min(formIdx, options.length - 1)] ?? options[0];
+  return slugToSpeciesName(active.slug);
+}
+
+function formNameFor(entry: DraftEntry, formIdx: number): string {
+  const options = getFormOptions(entry);
+  return options[Math.min(formIdx, options.length - 1)]?.name ?? entry.name;
+}
+
+function usePokemonData(slug: string | undefined): PokemonData | null {
+  const [data, setData] = useState<PokemonData | null>(null);
+  useEffect(() => {
+    if (!slug) {
+      setData(null);
+      return;
+    }
+    let alive = true;
+    void fetchPokemon(slug).then((d) => {
+      if (alive) setData(d);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [slug]);
+  return data;
+}
