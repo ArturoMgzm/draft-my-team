@@ -1,7 +1,9 @@
 // Pokemon Champions Regulation M-B legal pool.
 // `slug` is the PokéAPI identifier used to fetch sprites/types.
-// `mega` (optional) marks the species as mega-capable. Sprites still render
-// from the base form per the "show base forms" UI rule.
+// `mega` (optional) marks the species as mega-capable and is the primary/
+// default Mega variant. `altMegas` holds any additional Mega variants for
+// species with more than one (currently Charizard X/Y and Raichu X/Y).
+// Sprites still render from the base form per the "show base forms" UI rule.
 
 export type FormVariant = { name: string; slug: string };
 export type MegaInfo = { name: string; slug: string };
@@ -11,6 +13,7 @@ export type PokemonSpecies = {
   slug: string;
   forms?: FormVariant[];
   mega?: MegaInfo;
+  altMegas?: MegaInfo[];
 };
 
 export const REG_MB_POOL: PokemonSpecies[] = [
@@ -70,7 +73,12 @@ export const REG_MB_POOL: PokemonSpecies[] = [
   { name: "Castform", slug: "castform" },
   { name: "Ceruledge", slug: "ceruledge" },
   { name: "Chandelure", slug: "chandelure", mega: { name: "Mega Chandelure", slug: "chandelure-mega" } },
-  { name: "Charizard", slug: "charizard", mega: { name: "Mega Charizard", slug: "charizard-mega-y" } },
+  {
+    name: "Charizard",
+    slug: "charizard",
+    mega: { name: "Mega Charizard X", slug: "charizard-mega-x" },
+    altMegas: [{ name: "Mega Charizard Y", slug: "charizard-mega-y" }],
+  },
   { name: "Chesnaught", slug: "chesnaught", mega: { name: "Mega Chesnaught", slug: "chesnaught-mega" } },
   { name: "Chimecho", slug: "chimecho", mega: { name: "Mega Chimecho", slug: "chimecho-mega" } },
   { name: "Clawitzer", slug: "clawitzer" },
@@ -227,7 +235,8 @@ export const REG_MB_POOL: PokemonSpecies[] = [
       { name: "Raichu", slug: "raichu" },
       { name: "Raichu (Alolan)", slug: "raichu-alola" },
     ],
-    mega: { name: "Mega Raichu", slug: "raichu-mega-x" },
+    mega: { name: "Mega Raichu X", slug: "raichu-mega-x" },
+    altMegas: [{ name: "Mega Raichu Y", slug: "raichu-mega-y" }],
   },
   { name: "Rampardos", slug: "rampardos" },
   { name: "Reuniclus", slug: "reuniclus" },

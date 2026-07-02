@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchPokemon, type PokemonData } from "@/lib/pokeapi";
-import { getFormSlugs, type DraftEntry } from "@/lib/draft-engine";
-import { prettifySlug } from "@/lib/utils";
+import { getFormOptions, getFormSlugs, type DraftEntry } from "@/lib/draft-engine";
 import { HoverSprite } from "./HoverSprite";
 
 export function TypeBadge({ type }: { type: string }) {
@@ -54,6 +53,13 @@ function StatBars({ stats }: { stats: PokemonData["stats"] }) {
   );
 }
 
+// Shortens a full mega name for the compact card badge: "Mega Charizard X"
+// -> "Mega X", "Mega Abomasnow" -> "Mega" (no X/Y suffix to show).
+function shortMegaLabel(fullName: string): string {
+  const m = fullName.match(/\s([A-Z])$/);
+  return m ? `Mega ${m[1]}` : "Mega";
+}
+
 export function PoolCard({
   entry,
   disabled,
@@ -72,6 +78,7 @@ export function PoolCard({
   onSelectForm?: (idx: number) => void;
 }) {
   const forms = getFormSlugs(entry);
+  const formOptions = getFormOptions(entry);
   const hasFormSwitch = forms.length > 1 && !!onSelectForm;
   const activeSlug = forms[Math.min(formIdx, forms.length - 1)] ?? entry.slug;
   const isAltForm = formIdx > 0;
@@ -94,11 +101,7 @@ export function PoolCard({
   }, [entry.id]);
 
   const data = dataBySlug.get(activeSlug) ?? null;
-  const displayName = isAltForm
-    ? data?.name
-      ? prettifySlug(data.name)
-      : prettifySlug(activeSlug)
-    : entry.name;
+  const displayName = formOptions[formIdx]?.name ?? entry.name;
 
   function cycleForm() {
     if (!hasFormSwitch) return;
@@ -124,14 +127,18 @@ export function PoolCard({
           type="button"
           onClick={cycleForm}
           disabled={!hasFormSwitch}
-          title={hasFormSwitch ? "Click to toggle Mega form" : undefined}
+          title={
+            hasFormSwitch
+              ? `Click to cycle: ${formOptions.map((f) => f.name).join(" → ")}`
+              : undefined
+          }
           className={`absolute right-1.5 top-1.5 z-10 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground ${
             hasFormSwitch
               ? "cursor-pointer ring-1 ring-accent-foreground/0 hover:brightness-110 hover:ring-accent-foreground/40"
               : ""
           }`}
         >
-          {isAltForm ? "Mega ✓" : "Mega"}
+          {isAltForm ? `${shortMegaLabel(formOptions[formIdx]?.name ?? "Mega")} ✓` : "Mega"}
         </button>
       )}
       {entry.multiForm && (

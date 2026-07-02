@@ -1,8 +1,14 @@
-// Curated list of held items available in Pokémon Champions.
+// Held items actually available in Pokémon Champions (checked against the
+// official Reg M-B item pool via Serebii's item listing, and every name
+// verified against @smogon/calc's ITEMS index). Champions still doesn't
+// have every item from the mainline games — notably missing: Choice
+// Band/Specs, Assault Vest, Eviolite, Rocky Helmet, Weakness Policy,
+// Covert Cloak, Clear Amulet, Safety Goggles, Booster Energy, Loaded Dice,
+// Terrain Extender, Heavy-Duty Boots, Throat Spray, Mirror Herb.
 // Names match Smogon @smogon/calc's ITEMS index (Showdown-style).
-// This is intentionally a subset — extend as the Champions item pool is
-// confirmed. Mega Stones are handled implicitly when the "Mega" toggle
-// is on (the calc auto-applies the correct stone).
+// Mega Stones are handled implicitly by picking a Mega form in the
+// Pokémon selector — the calc auto-applies the correct stone.
+// Extend this list as future regulations add items.
 
 export type ItemGroup = { label: string; items: string[] };
 
@@ -11,51 +17,44 @@ export const CHAMPIONS_ITEMS: ItemGroup[] = [
     label: "Damage boosters",
     items: [
       "Life Orb",
-      "Choice Band",
-      "Choice Specs",
       "Choice Scarf",
       "Expert Belt",
       "Muscle Band",
       "Wise Glasses",
       "Metronome",
+      "Light Ball",
     ],
   },
   {
-    label: "Defensive",
-    items: [
-      "Assault Vest",
-      "Rocky Helmet",
-      "Eviolite",
-      "Weakness Policy",
-      "Covert Cloak",
-      "Clear Amulet",
-      "Safety Goggles",
-    ],
-  },
-  {
-    label: "Recovery / berries",
+    label: "Recovery / survival",
     items: [
       "Leftovers",
       "Sitrus Berry",
       "Focus Sash",
+      "Focus Band",
       "Mental Herb",
-      "Mirror Herb",
       "White Herb",
+      "Shell Bell",
+      "Big Root",
     ],
   },
   {
     label: "Situational",
     items: [
-      "Loaded Dice",
-      "Booster Energy",
-      "Terrain Extender",
       "Light Clay",
-      "Heavy-Duty Boots",
-      "Throat Spray",
       "Wide Lens",
+      "Zoom Lens",
       "Scope Lens",
       "King's Rock",
+      "Bright Powder",
+      "Quick Claw",
+      "Iron Ball",
+      "Shed Shell",
     ],
+  },
+  {
+    label: "Weather / terrain extenders",
+    items: ["Damp Rock", "Heat Rock", "Icy Rock", "Smooth Rock"],
   },
   {
     label: "Type-boosting",

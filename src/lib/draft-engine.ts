@@ -8,8 +8,12 @@ export type DraftEntry = {
   isMega?: boolean;
   multiForm?: boolean;
   altSlugs?: string[];
+  /** Display names parallel to altSlugs (same index maps to same slug). */
+  altNames?: string[];
   shiny?: boolean;
 };
+
+export type FormOption = { slug: string; name: string };
 
 export type PickOrder = "sequential" | "snake";
 export type MegaMode = "exact" | "atleast";
@@ -71,6 +75,7 @@ function buildBaseEntries(splitForms: boolean): DraftEntry[] {
           // sp.forms always lists the base form first (slug === sp.slug) —
           // exclude it here since entry.slug already covers the base form.
           altSlugs: sp.forms.map((f) => f.slug).filter((slug) => slug !== sp.slug),
+          altNames: sp.forms.filter((f) => f.slug !== sp.slug).map((f) => f.name),
         });
       }
     } else {
@@ -100,13 +105,15 @@ export function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
       const override = MEGA_FORM_OVERRIDES[sp.slug];
       if (override) spriteSlug = override;
     }
+    const megaVariants = [sp.mega, ...(sp.altMegas ?? [])];
     entries.push({
       id: `m:${sp.slug}`,
       name: sp.name,
       slug: spriteSlug,
       speciesKey: sp.slug,
       isMega: true,
-      altSlugs: [sp.mega.slug],
+      altSlugs: megaVariants.map((m) => m.slug),
+      altNames: megaVariants.map((m) => m.name),
     });
   }
   return entries;
@@ -143,6 +150,15 @@ export function getFormSlugs(entry: DraftEntry): string[] {
     return [entry.slug, ...entry.altSlugs];
   }
   return [entry.slug];
+}
+
+// Same as getFormSlugs but paired with a proper display name for each
+// form (base species name, regional/alt form name, or "Mega X"/"Mega Y"
+// style name), so UI toggles don't have to re-derive labels from slugs.
+export function getFormOptions(entry: DraftEntry): FormOption[] {
+  const slugs = getFormSlugs(entry);
+  const names = [entry.name, ...(entry.altNames ?? [])];
+  return slugs.map((slug, i) => ({ slug, name: names[i] ?? entry.name }));
 }
 
 export function nextPlayerIndex(pickIdx: number, playerCount: number, order: PickOrder): number {

@@ -2,6 +2,9 @@
 // - Slugs → Showdown-style species names
 // - Move slugs → Showdown-style move names
 // - Champions stat rules (Level 50, perfect IVs, no natures, SP replaces EVs)
+// Note: Terastallization is not a playable mechanic in the current Champions
+// regulation (it exists in the game files but isn't active), so Tera is not
+// modeled here — only Mega Evolution.
 
 import { calculate, Field, Generations, Move, Pokemon, Result, Side } from "@smogon/calc";
 
@@ -22,25 +25,37 @@ export type SpAlloc = {
 
 export const ZERO_SP: SpAlloc = { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
 
-// Convert 1 SP -> 4 EVs at L50 so each SP maps to +1 final stat, matching the
-// "1 SP = 1 stat point" reading of Champions' allocation UI. Nature is neutral,
-// IVs are all 31.
+// Convert 1 SP -> 8 EVs at L50 so each SP maps to +1 final stat, matching
+// Champions' "1 SP = 1 stat point" allocation. Nature is neutral, IVs are
+// all 31.
+//
+// Why 8 and not 4: the underlying stat formula is
+//   floor(floor((2*base + IV + floor(EV/4)) * level/100) * nature) + 5
+// At level 50, level/100 = 0.5, so each +1 to floor(EV/4) only adds 0.5
+// inside the outer floor — which only rounds up to a whole stat point on
+// every *other* increment. Going from 4 EVs/SP to 8 EVs/SP makes
+// floor(EV/4) jump by 2 per SP, guaranteeing a full +1 stat point every
+// time regardless of rounding parity. (Verified against @smogon/calc:
+// with 4 EVs/SP a stat only rose on every other SP invested — e.g.
+// 150, 151, 151, 152, 152... — while 8 EVs/SP gives a clean +1 per SP.)
+// 32 SP -> 256 EVs, matching Champions' official ~256-EV-equivalent cap
+// per stat (SP_MAX_PER_STAT stays 32; only the EV multiplier changes).
 function evsFromSp(sp: SpAlloc) {
   return {
-    hp: sp.hp * 4,
-    atk: sp.atk * 4,
-    def: sp.def * 4,
-    spa: sp.spa * 4,
-    spd: sp.spd * 4,
-    spe: sp.spe * 4,
+    hp: sp.hp * 8,
+    atk: sp.atk * 8,
+    def: sp.def * 8,
+    spa: sp.spa * 8,
+    spd: sp.spd * 8,
+    spe: sp.spe * 8,
   };
 }
 
 // ---- Slug → Showdown name conversion ------------------------------------
 
 const SPECIES_OVERRIDES: Record<string, string> = {
-  "farfetchd": "Farfetch'd",
-  "sirfetchd": "Sirfetch'd",
+  farfetchd: "Farfetch'd",
+  sirfetchd: "Sirfetch'd",
   "mr-mime": "Mr. Mime",
   "mr-mime-galar": "Mr. Mime-Galar",
   "mime-jr": "Mime Jr.",
@@ -48,7 +63,7 @@ const SPECIES_OVERRIDES: Record<string, string> = {
   "type-null": "Type: Null",
   "ho-oh": "Ho-Oh",
   "porygon-z": "Porygon-Z",
-  "porygon2": "Porygon2",
+  porygon2: "Porygon2",
   "nidoran-f": "Nidoran-F",
   "nidoran-m": "Nidoran-M",
   "tapu-koko": "Tapu Koko",
@@ -137,7 +152,6 @@ export type SideConfig = {
   speciesName: string;
   ability?: string;
   item?: string;
-  teraType?: string;
   isMega?: boolean;
   sp: SpAlloc;
   status?: "" | "brn" | "par" | "psn" | "tox" | "slp" | "frz";
@@ -184,7 +198,6 @@ function buildPokemon(cfg: SideConfig): Pokemon {
     evs: evsFromSp(cfg.sp),
     ability: cfg.ability,
     item: cfg.item,
-    teraType: cfg.teraType as never,
     status: (cfg.status ?? "") as never,
     boosts: cfg.boosts as never,
   });
@@ -209,6 +222,7 @@ export type MoveResult = {
   minDmg: number;
   maxDmg: number;
   maxHp: number;
+  immune: boolean;
 };
 
 export function runCalc(
@@ -240,7 +254,14 @@ export function runCalc(
     const maxHp = def.maxHP();
     const minPct = (min / maxHp) * 100;
     const maxPct = (max / maxHp) * 100;
-    const koRes = result.kochance();
+    // @smogon/calc's kochance() (and desc()/fullDesc() by extension) throws
+    // internally when max damage is 0 — e.g. a Ground move into a Flying
+    // type, or any other immunity. That's a completely valid result (0%,
+    // no effect), not a calc failure, so it must be guarded separately
+    // from the rest of the pipeline or the outer catch below would turn a
+    // real immunity into an indistinguishable "calc error" in the UI.
+    const isImmune = max === 0;
+    const koRes = isImmune ? null : safeKoChance(result);
     return {
       moveName,
       minPct,
@@ -248,9 +269,18 @@ export function runCalc(
       minDmg: min,
       maxDmg: max,
       maxHp,
-      desc: safeDesc(result),
-      koChance: koRes?.text ?? "",
+      desc: isImmune ? "No effect." : safeDesc(result),
+      koChance: isImmune ? "" : (koRes?.text ?? ""),
+      immune: isImmune,
     };
+  } catch {
+    return null;
+  }
+}
+
+function safeKoChance(r: Result): { text?: string } | null {
+  try {
+    return r.kochance();
   } catch {
     return null;
   }
@@ -270,17 +300,19 @@ function safeDesc(r: Result): string {
   }
 }
 
-// Given a base species + optional Mega alt slug, resolve which name to pass
-// to the calc engine when the Mega toggle is enabled.
-export function resolveSpeciesName(baseSlug: string, useMega: boolean, megaSlug?: string): string {
-  if (useMega && megaSlug) return slugToSpeciesName(megaSlug);
-  return slugToSpeciesName(baseSlug);
+// Final stat at Level 50 with a neutral nature and 31 IVs, given a base
+// stat and SP investment. Mirrors the standard formula so the UI can show
+// a live "base -> final" readout next to each SP slider:
+//   floor(floor((2*base + IV + floor(EV/4)) * level/100) * nature) + mod
+// HP adds level+10 instead of the flat +5 non-HP stats get, and has no
+// nature multiplier. EV = SP * 8 (see evsFromSp above for why 8 and not 4).
+export function computeStatAtL50(base: number, sp: number, isHp: boolean): number {
+  const ev = Math.max(0, Math.min(SP_MAX_PER_STAT, sp)) * 8;
+  const iv = 31;
+  const inner = 2 * base + iv + Math.floor(ev / 4);
+  const scaled = Math.floor((inner * 50) / 100);
+  return isHp ? scaled + 50 + 10 : scaled + 5;
 }
-
-export const TERA_TYPES = [
-  "Normal","Fire","Water","Electric","Grass","Ice","Fighting","Poison","Ground",
-  "Flying","Psychic","Bug","Rock","Ghost","Dragon","Dark","Steel","Fairy","Stellar",
-];
 
 export const WEATHERS = ["", "Sun", "Rain", "Sand", "Snow", "Harsh Sunshine", "Heavy Rain"];
 export const TERRAINS = ["", "Electric", "Grassy", "Misty", "Psychic"];
