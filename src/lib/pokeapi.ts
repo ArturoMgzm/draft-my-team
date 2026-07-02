@@ -52,6 +52,68 @@ function writeCache<T>(key: string, value: T) {
   }
 }
 
+export type ItemData = {
+  name: string;
+  sprite: string | null;
+};
+
+// Our item names are display/Showdown-style ("Life Orb", "King's Rock",
+// "NeverMeltIce") but PokéAPI's item slugs are kebab-case ("life-orb",
+// "kings-rock", "never-melt-ice"). This covers the general case; anything
+// that doesn't reduce cleanly (camelCase names with no separators) needs
+// an explicit override below.
+const ITEM_SLUG_OVERRIDES: Record<string, string> = {
+  NeverMeltIce: "never-melt-ice",
+};
+
+export function itemNameToSlug(name: string): string {
+  const override = ITEM_SLUG_OVERRIDES[name];
+  if (override) return override;
+  return name
+    .toLowerCase()
+    .replace(/'/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+const itemInflight = new Map<string, Promise<ItemData | null>>();
+
+// Fetches just the sprite + display name for a held item — enough for a
+// small icon preview next to the item picker, without pulling in the
+// full effect text/attribute payload PokéAPI also returns.
+export function fetchItem(slug: string): Promise<ItemData | null> {
+  const cacheKey = `item:${slug}`;
+  const cached = readCache<ItemData>(cacheKey);
+  if (cached) return Promise.resolve(cached);
+
+  const existing = itemInflight.get(slug);
+  if (existing) return existing;
+
+  const p = (async () => {
+    try {
+      const res = await fetch(`https://pokeapi.co/api/v2/item/${slug}`);
+      if (!res.ok) return null;
+      const json = (await res.json()) as {
+        name: string;
+        sprites: { default: string | null };
+      };
+      const data: ItemData = {
+        name: json.name,
+        sprite: json.sprites?.default ?? null,
+      };
+      writeCache(cacheKey, data);
+      return data;
+    } catch {
+      return null;
+    } finally {
+      itemInflight.delete(slug);
+    }
+  })();
+
+  itemInflight.set(slug, p);
+  return p;
+}
+
 const inflight = new Map<string, Promise<PokemonData | null>>();
 
 export function fetchPokemon(slug: string): Promise<PokemonData | null> {
@@ -111,9 +173,7 @@ export function fetchPokemon(slug: string): Promise<PokemonData | null> {
         new Set(
           json.moves
             .filter((m) =>
-              m.version_group_details.some(
-                (v) => v.version_group.name === "champions",
-              ),
+              m.version_group_details.some((v) => v.version_group.name === "champions"),
             )
             .map((m) => m.move.name),
         ),
@@ -132,9 +192,7 @@ export function fetchPokemon(slug: string): Promise<PokemonData | null> {
         types: json.types.map((t) => t.type.name),
         stats,
         bst,
-        abilities: Array.from(
-          new Set(json.abilities.map((a) => a.ability.name)),
-        ),
+        abilities: Array.from(new Set(json.abilities.map((a) => a.ability.name))),
         moves,
       };
       writeCache(slug, data);

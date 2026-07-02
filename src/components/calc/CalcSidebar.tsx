@@ -1,9 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { getFormOptions, type DraftEntry } from "@/lib/draft-engine";
-import { fetchPokemon, type PokemonData } from "@/lib/pokeapi";
+import {
+  fetchItem,
+  fetchPokemon,
+  itemNameToSlug,
+  type ItemData,
+  type PokemonData,
+} from "@/lib/pokeapi";
 import {
   computeStatAtL50,
   DEFAULT_FIELD,
+  NATURES,
+  natureMultiplier,
   runCalc,
   slugToSpeciesName,
   slugToMoveName,
@@ -28,6 +36,7 @@ type SideDraft = {
   formIdx: number;
   ability: string;
   item: string;
+  nature: string;
   status: SideConfig["status"];
   sp: SpAlloc;
   moves: string[]; // 4 slots, slug or ""
@@ -38,9 +47,23 @@ const EMPTY_SIDE: SideDraft = {
   formIdx: 0,
   ability: "",
   item: "",
+  nature: "Hardy",
   status: "",
   sp: { ...ZERO_SP },
   moves: ["", "", "", ""],
+};
+
+// One distinct color per stat, pulled entirely from the existing design
+// tokens (chart-1..5, primary, accent) — no new colors introduced. Used to
+// tint each SP slider's fill so HP/Atk/Def/SpA/SpD/Spe are visually
+// distinguishable at a glance.
+const STAT_COLORS: Record<keyof SpAlloc, { var: string; text: string }> = {
+  hp: { var: "var(--chart-1)", text: "text-chart-1" },
+  atk: { var: "var(--primary)", text: "text-primary" },
+  def: { var: "var(--accent)", text: "text-accent" },
+  spa: { var: "var(--chart-2)", text: "text-chart-2" },
+  spd: { var: "var(--chart-3)", text: "text-chart-3" },
+  spe: { var: "var(--chart-5)", text: "text-chart-5" },
 };
 
 // Attacker/Defender each get a distinct accent pulled from the existing
@@ -163,6 +186,7 @@ function SideCard({
       ...s,
       formIdx: 0,
       ability: "",
+      nature: "Hardy",
       moves: ["", "", "", ""],
       sp: { ...ZERO_SP },
     }));
@@ -276,6 +300,18 @@ function SideCard({
             options={["", ...ALL_ITEMS]}
             groups={CHAMPIONS_ITEMS}
             format={(v) => v || "None"}
+            icon={<ItemIcon name={state.item} />}
+          />
+          <LabeledSelect
+            label="Nature"
+            value={state.nature}
+            onChange={(v) => setState((s) => ({ ...s, nature: v }))}
+            options={NATURES.map((n) => n.name)}
+            format={(v) => {
+              const n = NATURES.find((x) => x.name === v);
+              if (!n || !n.plus) return `${v} (neutral)`;
+              return `${v} (+${n.plus.toUpperCase()}/-${n.minus?.toUpperCase()})`;
+            }}
           />
           <LabeledSelect
             label="Status"
@@ -291,7 +327,7 @@ function SideCard({
         <div className="mt-3">
           <div className="mb-1 flex items-baseline justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
             <span>Stat Points</span>
-            <span className={spBudgetLeft < 0 ? "font-bold text-primary" : ""}>
+            <span className={spTotal === SP_MAX_TOTAL ? `font-bold ${accent.text}` : ""}>
               {spTotal} / {SP_MAX_TOTAL}
             </span>
           </div>
@@ -307,17 +343,41 @@ function SideCard({
               ] as const
             ).map(([label, key]) => {
               const base = data ? statBaseFor(data, key) : null;
+              const mult = key === "hp" ? 1 : natureMultiplier(state.nature, key);
               const final =
-                base !== null ? computeStatAtL50(base, state.sp[key], key === "hp") : null;
+                base !== null ? computeStatAtL50(base, state.sp[key], key === "hp", mult) : null;
+              const value = state.sp[key];
+              // Each slider's own max shrinks as the other five stats eat
+              // into the shared 66-point budget, so it's mechanically
+              // impossible to drag past what's actually available — the
+              // fill simply stops advancing once the budget runs out,
+              // rather than allowing an "over budget" state to happen at all.
+              const maxForThisStat = Math.min(SP_MAX_PER_STAT, value + spBudgetLeft);
+              const fillPct = (value / SP_MAX_PER_STAT) * 100;
+              const color = STAT_COLORS[key];
+              const isBoosted = mult > 1;
+              const isReduced = mult < 1;
               return (
                 <div key={key} className="rounded-md border border-border bg-background/40 p-1.5">
                   <div className="flex items-baseline justify-between text-[10px]">
-                    <span className="font-semibold">{label}</span>
+                    <span className="font-semibold">
+                      {label}
+                      {isBoosted && (
+                        <span className={`ml-0.5 ${color.text}`} title="Boosted by nature">
+                          +
+                        </span>
+                      )}
+                      {isReduced && (
+                        <span className="ml-0.5 text-muted-foreground" title="Reduced by nature">
+                          −
+                        </span>
+                      )}
+                    </span>
                     <span className="tabular-nums text-muted-foreground">
                       {base !== null ? (
                         <>
                           {base} <span aria-hidden>→</span>{" "}
-                          <span className={state.sp[key] > 0 ? accent.text : ""}>{final}</span>
+                          <span className={value > 0 ? color.text : ""}>{final}</span>
                         </>
                       ) : (
                         "—"
@@ -327,25 +387,26 @@ function SideCard({
                   <input
                     type="range"
                     min={0}
-                    max={SP_MAX_PER_STAT}
-                    value={state.sp[key]}
+                    max={maxForThisStat}
+                    value={value}
                     onChange={(e) =>
                       setState((s) => ({
                         ...s,
                         sp: { ...s.sp, [key]: Number(e.target.value) },
                       }))
                     }
-                    className="w-full accent-accent"
+                    className="stat-range w-full"
+                    style={
+                      {
+                        background: `linear-gradient(to right, ${color.var} 0%, ${color.var} ${fillPct}%, var(--input) ${fillPct}%, var(--input) 100%)`,
+                        "--thumb-color": color.var,
+                      } as CSSProperties
+                    }
                   />
                 </div>
               );
             })}
           </div>
-          {spBudgetLeft < 0 && (
-            <p className="mt-1 text-[10px] text-primary">
-              Over budget by {Math.abs(spBudgetLeft)} SP
-            </p>
-          )}
         </div>
       )}
 
@@ -413,6 +474,7 @@ function LabeledSelect({
   options,
   groups,
   format,
+  icon,
 }: {
   label: string;
   value: string;
@@ -420,11 +482,16 @@ function LabeledSelect({
   options: string[];
   groups?: { label: string; items: string[] }[];
   format?: (v: string) => string;
+  /** Small preview (e.g. an item's PokéAPI sprite) shown next to the label. */
+  icon?: ReactNode;
 }) {
   const fmt = format ?? ((v: string) => v);
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+        {icon}
+        {label}
+      </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -455,268 +522,21 @@ function LabeledSelect({
   );
 }
 
-// -------------------- Field panel --------------------
-
-function FieldPanel({
-  field,
-  setField,
-}: {
-  field: FieldConfig;
-  setField: (updater: (f: FieldConfig) => FieldConfig) => void;
-}) {
-  return (
-    <section className="rounded-xl border border-border bg-card/60 p-3">
-      <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-        Field
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <LabeledSelect
-          label="Format"
-          value={field.gameType}
-          onChange={(v) => setField((f) => ({ ...f, gameType: v as "Singles" | "Doubles" }))}
-          options={["Doubles", "Singles"]}
-        />
-        <LabeledSelect
-          label="Weather"
-          value={field.weather ?? ""}
-          onChange={(v) => setField((f) => ({ ...f, weather: v || undefined }))}
-          options={WEATHERS}
-          format={(v) => v || "None"}
-        />
-        <LabeledSelect
-          label="Terrain"
-          value={field.terrain ?? ""}
-          onChange={(v) => setField((f) => ({ ...f, terrain: v || undefined }))}
-          options={TERRAINS}
-          format={(v) => (v ? `${v} Terrain` : "None")}
-        />
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-        <div
-          className={`space-y-1 rounded-md border ${SIDE_ACCENT.atk.border} bg-background/40 p-2`}
-        >
-          <div
-            className={`text-[10px] font-semibold uppercase tracking-wider ${SIDE_ACCENT.atk.text}`}
-          >
-            Attacker side
-          </div>
-          <Checkbox
-            label="Tailwind"
-            checked={!!field.atk.isTailwind}
-            onChange={(v) => setField((f) => ({ ...f, atk: { ...f.atk, isTailwind: v } }))}
-          />
-          <Checkbox
-            label="Helping Hand"
-            checked={!!field.atk.isHelpingHand}
-            onChange={(v) => setField((f) => ({ ...f, atk: { ...f.atk, isHelpingHand: v } }))}
-          />
-        </div>
-        <div
-          className={`space-y-1 rounded-md border ${SIDE_ACCENT.def.border} bg-background/40 p-2`}
-        >
-          <div
-            className={`text-[10px] font-semibold uppercase tracking-wider ${SIDE_ACCENT.def.text}`}
-          >
-            Defender side
-          </div>
-          <Checkbox
-            label="Reflect"
-            checked={!!field.def.isReflect}
-            onChange={(v) => setField((f) => ({ ...f, def: { ...f.def, isReflect: v } }))}
-          />
-          <Checkbox
-            label="Light Screen"
-            checked={!!field.def.isLightScreen}
-            onChange={(v) => setField((f) => ({ ...f, def: { ...f.def, isLightScreen: v } }))}
-          />
-          <Checkbox
-            label="Aurora Veil"
-            checked={!!field.def.isAuroraVeil}
-            onChange={(v) => setField((f) => ({ ...f, def: { ...f.def, isAuroraVeil: v } }))}
-          />
-        </div>
-      </div>
-    </section>
-  );
+// Small icon preview for the currently selected held item, pulled from
+// PokéAPI's item endpoint (sprite + name only — no effect text needed here).
+function ItemIcon({ name }: { name: string }) {
+  const item = useItemSprite(name);
+  if (!name || !item?.sprite) return null;
+  return <img src={item.sprite} alt="" className="h-3.5 w-3.5 object-contain" />;
 }
 
-function Checkbox({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <label className="flex items-center gap-1.5">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <span>{label}</span>
-    </label>
-  );
-}
-
-// -------------------- Results --------------------
-
-function Results({
-  attacker,
-  defender,
-  field,
-  pool,
-}: {
-  attacker: SideDraft;
-  defender: SideDraft;
-  field: FieldConfig;
-  pool: DraftEntry[];
-}) {
-  const aEntry = pool.find((e) => e.id === attacker.entryId) ?? null;
-  const dEntry = pool.find((e) => e.id === defender.entryId) ?? null;
-  const aFormName = aEntry ? formNameFor(aEntry, attacker.formIdx) : null;
-  const dFormName = dEntry ? formNameFor(dEntry, defender.formIdx) : null;
-
-  const results = useMemo<(MoveResult | null)[]>(() => {
-    if (!aEntry || !dEntry) return [];
-    const aName = speciesNameFor(aEntry, attacker.formIdx);
-    const dName = speciesNameFor(dEntry, defender.formIdx);
-    const aCfg: SideConfig = {
-      speciesName: aName,
-      ability: attacker.ability || undefined,
-      item: attacker.item || undefined,
-      sp: attacker.sp,
-      status: attacker.status,
-    };
-    const dCfg: SideConfig = {
-      speciesName: dName,
-      ability: defender.ability || undefined,
-      item: defender.item || undefined,
-      sp: defender.sp,
-      status: defender.status,
-    };
-    return attacker.moves.map((mv) => (mv ? runCalc(aCfg, dCfg, mv, field) : null));
-  }, [attacker, defender, field, aEntry, dEntry]);
-
-  const anySelected = attacker.entryId && defender.entryId;
-  if (!anySelected) {
-    return (
-      <section className="rounded-xl border border-dashed border-border bg-card/30 p-4 text-center text-xs text-muted-foreground">
-        Pick an attacker and defender to see damage rolls.
-      </section>
-    );
-  }
-
-  return (
-    <section className="rounded-xl border border-border bg-card/60 p-3">
-      <div className="mb-2 flex items-baseline justify-between">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-          Results
-        </span>
-        {aFormName && dFormName && (
-          <span className="truncate pl-2 text-[10px] text-muted-foreground">
-            <span className={SIDE_ACCENT.atk.text}>{aFormName}</span>
-            {" → "}
-            <span className={SIDE_ACCENT.def.text}>{dFormName}</span>
-          </span>
-        )}
-      </div>
-      <ul className="space-y-1.5">
-        {attacker.moves.map((mv, i) => {
-          const r = results[i];
-          if (!mv) {
-            return (
-              <li
-                key={i}
-                className="rounded-md border border-dashed border-border/70 bg-background/30 px-2 py-1.5 text-[11px] text-muted-foreground"
-              >
-                Move slot {i + 1} empty
-              </li>
-            );
-          }
-          if (!r) {
-            return (
-              <li
-                key={i}
-                className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1.5 text-[11px] text-primary"
-              >
-                {slugToMoveName(mv)} — calc error (unsupported name?)
-              </li>
-            );
-          }
-          return <MoveResultRow key={i} result={r} />;
-        })}
-      </ul>
-    </section>
-  );
-}
-
-function MoveResultRow({ result }: { result: MoveResult }) {
-  if (result.immune) {
-    return (
-      <li className="rounded-md border border-border bg-background/40 px-2 py-1.5 text-[11px]">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="font-semibold">{result.moveName}</span>
-          <span className="tabular-nums text-muted-foreground">0.0%</span>
-        </div>
-        <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-secondary" />
-        <div className="mt-1 text-[10px] text-muted-foreground">No effect — immune</div>
-      </li>
-    );
-  }
-  const clampedMax = Math.min(100, result.maxPct);
-  const barColor =
-    result.maxPct >= 100
-      ? "bg-primary"
-      : result.maxPct >= 50
-        ? "bg-accent"
-        : "bg-muted-foreground/60";
-  return (
-    <li className="rounded-md border border-border bg-background/40 px-2 py-1.5 text-[11px]">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="font-semibold">{result.moveName}</span>
-        <span className="tabular-nums">
-          {result.minPct.toFixed(1)}–{result.maxPct.toFixed(1)}%
-        </span>
-      </div>
-      <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-secondary">
-        <div className={`h-full ${barColor}`} style={{ width: `${clampedMax}%` }} />
-      </div>
-      {result.koChance && (
-        <div className="mt-1 text-[10px] text-muted-foreground">{result.koChance}</div>
-      )}
-    </li>
-  );
-}
-
-// -------------------- Helpers --------------------
-
-// Resolves the exact species name @smogon/calc expects for whichever form
-// (base / alt-form / specific Mega variant) is currently selected on this
-// side — not just whatever form the entry happened to default to.
-function speciesNameFor(entry: DraftEntry, formIdx: number): string {
-  const options = getFormOptions(entry);
-  const active = options[Math.min(formIdx, options.length - 1)] ?? options[0];
-  return slugToSpeciesName(active.slug);
-}
-
-function formNameFor(entry: DraftEntry, formIdx: number): string {
-  const options = getFormOptions(entry);
-  return options[Math.min(formIdx, options.length - 1)]?.name ?? entry.name;
-}
-
-function usePokemonData(slug: string | undefined): PokemonData | null {
-  const [data, setData] = useState<PokemonData | null>(null);
+function useItemSprite(name: string): ItemData | null {
+  const [data, setData] = useState<ItemData | null>(null);
   useEffect(() => {
-    if (!slug) {
+    if (!name) {
       setData(null);
       return;
     }
     let alive = true;
-    void fetchPokemon(slug).then((d) => {
+    void fetchItem(itemNameToSlug(name)).then((d) => {
       if (alive) setData(d);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [slug]);
-  return data;
-}
