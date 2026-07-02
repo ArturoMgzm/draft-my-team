@@ -1,48 +1,47 @@
-## Two fixes
+# Draft-aware Damage Calculator (Champions Reg M-B)
 
-### 1. Host missing from draft (bug fix)
+A collapsible right-side sidebar on the draft page. Uses `@smogon/calc` as the damage engine, but overrides stat calculation to match Champions' SP system (no EVs, no IVs, no natures). Pool is restricted to what the current draft is working with.
 
-In `private.apply_room_action`, the `create` branch inserts the host into `room_players` but never appends them to `rooms.player_order`. Only `join` appends. Result: in a 2-player room, `player_order` contains only the guest, so `RoomDraft` renders one team and treats the guest as the sole drafter.
+## Behavior
 
-**Migration:** update `private.apply_room_action` so the `create` branch initializes `player_order` with `[host_id]`:
+- **Trigger.** New "Calculator" button in the draft top bar. Opens a right sidebar (shadcn `Sidebar` side="right", collapsible). Works in Solo and Room modes; sidebar is local-only (does not sync to other players).
+- **Scope.** Attacker/Defender dropdowns list only entries from `room.pool` (or Solo pool). Includes picked and unpicked entries and preserves Mega/regional/gender forms exactly as they appear in the pool.
+- **Layout inside the sidebar.**
+  1. **Attacker card** — species picker, ability (dropdown of that species' abilities), item (Champions item list, see below), Tera type, SP allocation (see below), status.
+  2. **Defender card** — same fields.
+  3. **Field bar** — Doubles by default, weather, terrain, screens (Reflect/Light Screen/Aurora Veil), Tailwind, hazards on defender side.
+  4. **Move rows** — 4 slots per attacker, populated from the species' Champions-legal move list (already cached in `pokeapi.ts`). Each row shows damage %, min/max rolls, and OHKO/2HKO odds vs. the current defender.
+  5. **Reverse button** — swap attacker/defender to quickly check both sides.
 
-```sql
-INSERT INTO public.rooms (code, host_id, config, player_order)
-VALUES (_code, _player_id, COALESCE(_action->'config','{}'::jsonb),
-        jsonb_build_array(_player_id::text));
-```
+## Champions stat rules (research summary)
 
-No client changes needed — `Lobby`/`RoomDraft` already read `player_order` as the source of truth.
+- Fixed **Level 50**, **perfect IVs** (all 31), **no natures**.
+- Stat Points (SP) replace EVs. **Cap: 66 total, max 32 in any one stat.**
+- Doubles format; spread moves apply the standard 0.75× multiplier.
+- Held items exist but are a curated subset — we'll hardcode a Champions item list in `src/lib/champions-items.ts` (Life Orb, Choice Band/Specs/Scarf, Assault Vest, Leftovers, Sitrus Berry, Focus Sash, etc.). Same pattern as `pokemon-pool.ts`. The exact list is a follow-up detail; the calc engine already knows what each item does, we just filter which ones the dropdown offers.
+- Mega evolution is in-battle; the sidebar exposes a "Mega evolve" toggle on any species whose pool entry has a `mega` slug — when on, the calc uses the mega form's base stats and ability.
 
-### 2. 24h pruning of rooms and players
+## Engine strategy
 
-`rooms.updated_at` already bumps on every action, and `room_players.room_code` has `ON DELETE CASCADE` to `rooms`, so deleting stale rooms also cleans up their players.
+- Install `@smogon/calc` and use its Gen 9 module.
+- Do **not** rely on its default EV/IV/nature stat calc. Compute final stats ourselves from base stats + SP using the mainline formula with EV≡SP·k and IV=31, nature=neutral, then pass raw stats via the `Pokemon` constructor's `stats` override. This means the SP system stays isolated in one helper (`src/lib/champions-stats.ts`) and everything downstream — abilities, items, weather, crits, spread, Tera — runs through the reference implementation unchanged.
+- Ability/item/move dropdowns are filtered client-side to the Champions-legal sets; the engine still evaluates their effects normally.
+- Tree-shake to Gen 9 only, and lazy-load the whole `/calc` sidebar chunk so the draft page's initial bundle isn't affected.
 
-**Migration:** create a small SQL cleanup function + enable `pg_cron`:
+## Complexity
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_cron;
+- **Small:** engine wiring, sidebar shell, dropdowns populated from existing caches.
+- **Medium:** SP allocator UI (six sliders + running total + per-stat cap), the Champions item list curation, mega-form toggle wiring.
+- **Larger unknowns (deferred, not blocking a first cut):** exact SP-to-stat conversion constant, exact final item list, whether Champions changes any specific ability/move interaction vs. SV. These get placeholder-safe defaults now and can be tuned in a follow-up once you confirm.
 
-CREATE OR REPLACE FUNCTION private.prune_stale_rooms()
-RETURNS void LANGUAGE sql AS $$
-  DELETE FROM public.rooms WHERE updated_at < now() - interval '24 hours';
-$$;
-```
+## Files
 
-**Schedule (via `supabase--insert`, not migration — user-specific cron state):**
+- **New:** `src/lib/champions-stats.ts`, `src/lib/champions-items.ts`, `src/components/calc/CalcSidebar.tsx`, `src/components/calc/PokemonCard.tsx`, `src/components/calc/FieldBar.tsx`, `src/components/calc/MoveRow.tsx`, `src/hooks/useCalc.ts`.
+- **Touched:** `src/routes/index.tsx` (mount the sidebar in both `SoloDraft` and `RoomDraft` shells + a toggle button), `src/components/draft/RoomDraft.tsx` and Solo equivalent (top-bar button), `package.json` (`@smogon/calc`).
+- **Untouched:** DB schema, room sync, existing draft engine, PokéAPI cache.
 
-```sql
-SELECT cron.schedule(
-  'prune-stale-rooms',
-  '0 * * * *',  -- hourly
-  $$ SELECT private.prune_stale_rooms(); $$
-);
-```
+## Out of scope for v1
 
-Pure SQL, no HTTP call needed — cheapest option.
-
-### Notes
-
-- Uses `updated_at` (not `created_at`) so an active 30-hour draft isn't wiped out mid-game; only truly idle rooms get pruned.
-- `room_players` disappears automatically via the existing FK cascade — no separate cleanup needed.
-- If you'd prefer a shorter (e.g. 6h idle) or longer window, say the number and I'll swap the interval.
+- Team-wide "what threatens my team" matrix (Pikalytics-style). Doable later on top of the same engine once the single-matchup calc is solid.
+- Persisting SP spreads per Pokémon across sessions.
+- Sharing the calc state between players in a room.
