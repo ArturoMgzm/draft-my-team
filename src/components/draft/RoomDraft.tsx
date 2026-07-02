@@ -158,7 +158,14 @@ export function RoomDraft({
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-[320px_1fr]">
+    <div className="relative grid gap-6 md:grid-cols-[320px_1fr]">
+      <button
+        onClick={() => setCalcOpen(true)}
+        className="fixed bottom-4 right-4 z-30 rounded-full border border-accent/40 bg-accent/20 px-4 py-2 text-xs font-semibold text-accent shadow-lg hover:bg-accent/30"
+      >
+        🧮 Calculator
+      </button>
+      <CalcSidebar pool={room.pool ?? []} open={calcOpen} onClose={() => setCalcOpen(false)} />
       <TeamsSidebar
         players={sidebarPlayers}
         activeIdx={activeIdx}
