@@ -9,6 +9,7 @@ import { TeamsSidebar } from "./TeamsSidebar";
 import { PoolGrid } from "./PoolGrid";
 import { ResultsGrid } from "./ResultsGrid";
 import { playShinyChime } from "@/lib/shiny-sound";
+import { CalcSidebar } from "@/components/calc/CalcSidebar";
 
 export function RoomDraft({
   room,
@@ -23,6 +24,7 @@ export function RoomDraft({
   const [pendingPick, setPendingPick] = useState<DraftEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [calcOpen, setCalcOpen] = useState(false);
 
   const orderedIds = (room.player_order ?? []).filter(Boolean);
   const orderedPlayers = useMemo(() => {
