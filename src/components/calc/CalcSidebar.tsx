@@ -26,7 +26,16 @@ import {
   type SideConfig,
   type SpAlloc,
 } from "@/lib/calc-adapter";
-import { ALL_ITEMS, CHAMPIONS_ITEMS } from "@/lib/champions-items";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CHAMPIONS_ITEMS } from "@/lib/champions-items";
 
 type SideKey = "atk" | "def";
 
@@ -293,15 +302,7 @@ function SideCard({
             options={["", ...(data?.abilities ?? [])]}
             format={(v) => (v ? cap(v) : "Default")}
           />
-          <LabeledSelect
-            label="Item"
-            value={state.item}
-            onChange={(v) => setState((s) => ({ ...s, item: v }))}
-            options={["", ...ALL_ITEMS]}
-            groups={CHAMPIONS_ITEMS}
-            format={(v) => v || "None"}
-            icon={<ItemIcon name={state.item} />}
-          />
+          <ItemPicker value={state.item} onChange={(v) => setState((s) => ({ ...s, item: v }))} />
           <LabeledSelect
             label="Nature"
             value={state.nature}
@@ -325,13 +326,13 @@ function SideCard({
 
       {entry && (
         <div className="mt-3">
-          <div className="mb-1 flex items-baseline justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1.5 flex items-baseline justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
             <span>Stat Points</span>
             <span className={spTotal === SP_MAX_TOTAL ? `font-bold ${accent.text}` : ""}>
               {spTotal} / {SP_MAX_TOTAL}
             </span>
           </div>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="space-y-1.5">
             {(
               [
                 ["HP", "hp"],
@@ -357,9 +358,14 @@ function SideCard({
               const color = STAT_COLORS[key];
               const isBoosted = mult > 1;
               const isReduced = mult < 1;
+              const setValue = (next: number) =>
+                setState((s) => ({
+                  ...s,
+                  sp: { ...s.sp, [key]: Math.max(0, Math.min(maxForThisStat, next)) },
+                }));
               return (
-                <div key={key} className="rounded-md border border-border bg-background/40 p-1.5">
-                  <div className="flex items-baseline justify-between text-[10px]">
+                <div key={key} className="rounded-md border border-border bg-background/40 p-2">
+                  <div className="mb-1 flex items-baseline justify-between text-[11px]">
                     <span className="font-semibold">
                       {label}
                       {isBoosted && (
@@ -384,25 +390,51 @@ function SideCard({
                       )}
                     </span>
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={maxForThisStat}
-                    value={value}
-                    onChange={(e) =>
-                      setState((s) => ({
-                        ...s,
-                        sp: { ...s.sp, [key]: Number(e.target.value) },
-                      }))
-                    }
-                    className="stat-range w-full"
-                    style={
-                      {
-                        background: `linear-gradient(to right, ${color.var} 0%, ${color.var} ${fillPct}%, var(--input) ${fillPct}%, var(--input) 100%)`,
-                        "--thumb-color": color.var,
-                      } as CSSProperties
-                    }
-                  />
+                  {/* Full-width slider for quick bulk changes, flanked by
+                      +/- steppers for exact 1-point adjustments — dragging
+                      to hit a precise value out of 32 possible steps on a
+                      narrow track is genuinely hard, so the steppers (and
+                      the number between them) are the precise-entry path,
+                      while the slider stays for fast rough positioning. */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setValue(value - 1)}
+                      disabled={value <= 0}
+                      className="stat-step-btn"
+                      aria-label={`Decrease ${label}`}
+                    >
+                      −
+                    </button>
+                    <input
+                      type="range"
+                      min={0}
+                      max={maxForThisStat}
+                      value={value}
+                      onChange={(e) => setValue(Number(e.target.value))}
+                      className="stat-range flex-1"
+                      style={
+                        {
+                          background: `linear-gradient(to right, ${color.var} 0%, ${color.var} ${fillPct}%, var(--input) ${fillPct}%, var(--input) 100%)`,
+                          "--thumb-color": color.var,
+                        } as CSSProperties
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setValue(value + 1)}
+                      disabled={value >= maxForThisStat}
+                      className="stat-step-btn"
+                      aria-label={`Increase ${label}`}
+                    >
+                      +
+                    </button>
+                    <span
+                      className={`w-7 shrink-0 text-right text-xs font-bold tabular-nums ${value > 0 ? color.text : "text-muted-foreground"}`}
+                    >
+                      {value}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -546,6 +578,60 @@ function useItemSprite(name: string): ItemData | null {
     };
   }, [name]);
   return data;
+}
+
+// A native <select> can't render images inside its own <option> elements in
+// any browser, so the item picker uses the Radix-based Select component
+// instead — it renders each option as real DOM, which lets every item show
+// its PokéAPI sprite right in the dropdown list, not just in a preview
+// above the trigger.
+const NONE_ITEM = "__none__";
+
+function ItemPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex flex-col gap-0.5">
+      <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <ItemIcon name={value} />
+        Item
+      </span>
+      <Select value={value || NONE_ITEM} onValueChange={(v) => onChange(v === NONE_ITEM ? "" : v)}>
+        <SelectTrigger className="h-auto rounded-md border border-border bg-input px-2 py-1 text-[11px] shadow-none">
+          <SelectValue placeholder="None" />
+        </SelectTrigger>
+        <SelectContent className="max-h-80">
+          <SelectItem value={NONE_ITEM} className="text-[11px]">
+            None
+          </SelectItem>
+          {CHAMPIONS_ITEMS.map((g) => (
+            <SelectGroup key={g.label}>
+              <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {g.label}
+              </SelectLabel>
+              {g.items.map((it) => (
+                <ItemSelectOption key={it} name={it} />
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function ItemSelectOption({ name }: { name: string }) {
+  const item = useItemSprite(name);
+  return (
+    <SelectItem value={name} textValue={name} className="text-[11px]">
+      <span className="flex items-center gap-1.5">
+        {item?.sprite ? (
+          <img src={item.sprite} alt="" className="h-4 w-4 shrink-0 object-contain" />
+        ) : (
+          <span className="h-4 w-4 shrink-0" aria-hidden />
+        )}
+        {name}
+      </span>
+    </SelectItem>
+  );
 }
 
 // -------------------- Field panel --------------------
