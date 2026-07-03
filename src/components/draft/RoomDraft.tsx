@@ -183,7 +183,7 @@ export function RoomDraft({
           isHost={isHost}
           onSetTimer={hostSetTimer}
         />
-        <ResultsGrid players={sidebarPlayers} unpicked={remainingPool} />
+        <ResultsGrid players={sidebarPlayers} unpicked={remainingPool} selfId={selfId} />
         {err && (
           <div className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs text-primary">
             {err}

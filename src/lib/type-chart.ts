@@ -92,12 +92,12 @@ export function defenseMatchup(
 }
 
 export function effectivenessLabel(mult: number): string {
-  if (mult === 0) return "Immune";
-  if (mult >= 4) return "4x weak";
-  if (mult === 2) return "2x weak";
-  if (mult === 1) return "Neutral";
-  if (mult === 0.5) return "Resists";
-  if (mult <= 0.25) return "4x resists";
+  if (mult === 0) return "Immune (0x)";
+  if (mult >= 4) return "Extremely effective (4x)";
+  if (mult === 2) return "Super effective (2x)";
+  if (mult === 1) return "Neutral (1x)";
+  if (mult === 0.5) return "Not very effective (0.5x)";
+  if (mult <= 0.25) return "Mostly ineffective (0.25x)";
   return `${mult}x`;
 }
 
@@ -106,4 +106,68 @@ export function prettyAbilityName(slug: string): string {
     .split("-")
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(" ");
+}
+
+// The 18 standard types a Pokémon can actually have as its own typing.
+// Deliberately excludes "???" (a legacy placeholder, unused since Gen 5)
+// and "Stellar" (a Terapagos-exclusive battle state, not a real typing) —
+// neither is a defending type any drafted Pokémon can actually have, so
+// including them in a coverage summary would just be noise.
+export const ALL_TYPES = [
+  "Normal",
+  "Fire",
+  "Water",
+  "Electric",
+  "Grass",
+  "Ice",
+  "Fighting",
+  "Poison",
+  "Ground",
+  "Flying",
+  "Psychic",
+  "Bug",
+  "Rock",
+  "Ghost",
+  "Dragon",
+  "Dark",
+  "Steel",
+  "Fairy",
+];
+
+export type CoverageSummary = {
+  x4: string[];
+  x2: string[];
+  x1: string[];
+  x05: string[];
+  x025: string[];
+  x0: string[];
+};
+
+// Abstract offensive coverage: given a set of attacking types (a team's
+// collective STAB + chosen moves), buckets each of the 18 real types by how
+// the *best* available attack type fares against a hypothetical pure
+// single-type defender of that type. Ability-agnostic on purpose — this is
+// a typing-only coverage map, not a matchup against any specific Pokémon.
+//
+// Since each check is against a single type in isolation, only 0x/0.5x/1x/
+// 2x are actually reachable here (4x and 0.25x require a *dual*-typed
+// defender stacking two resistances/weaknesses) — those two tiers exist
+// for label consistency with effectivenessLabel and the real matchup grid,
+// but will typically show "None" in this abstract view.
+export function teamCoverageSummary(attackTypes: string[]): CoverageSummary {
+  const uniqueAttacks = Array.from(new Set(attackTypes));
+  const summary: CoverageSummary = { x4: [], x2: [], x1: [], x05: [], x025: [], x0: [] };
+  for (const defType of ALL_TYPES) {
+    const best =
+      uniqueAttacks.length === 0
+        ? 1
+        : Math.max(...uniqueAttacks.map((a) => typeEffectiveness(a, [defType])));
+    if (best >= 4) summary.x4.push(defType);
+    else if (best === 2) summary.x2.push(defType);
+    else if (best === 1) summary.x1.push(defType);
+    else if (best === 0.5) summary.x05.push(defType);
+    else if (best > 0) summary.x025.push(defType);
+    else summary.x0.push(defType);
+  }
+  return summary;
 }

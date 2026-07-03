@@ -68,6 +68,7 @@ export function PoolCard({
   formIdx = 0,
   onSelectForm,
   pickable = true,
+  showTypeBadges = true,
 }: {
   entry: DraftEntry;
   /** Only meaningful when pickable (default true). */
@@ -83,6 +84,10 @@ export function PoolCard({
    * form toggling and right-click-to-flip stats, but no pick action and no
    * "can't pick this" dimming. */
   pickable?: boolean;
+  /** False to hide the front-face type badges — used on the final team
+   * roster where 6+ cards per team get visually busy; right-click still
+   * flips to the full stats/typing back face. */
+  showTypeBadges?: boolean;
 }) {
   const forms = getFormSlugs(entry);
   const formOptions = getFormOptions(entry);
@@ -210,11 +215,13 @@ export function PoolCard({
           </div>
           <div className="mt-1 w-full text-center">
             <div className="truncate text-xs font-bold">{displayName}</div>
-            <div className="mt-1 flex flex-wrap justify-center gap-1">
-              {data?.types.map((t) => (
-                <TypeBadge key={t} type={t} />
-              ))}
-            </div>
+            {showTypeBadges && (
+              <div className="mt-1 flex flex-wrap justify-center gap-1">
+                {data?.types.map((t) => (
+                  <TypeBadge key={t} type={t} />
+                ))}
+              </div>
+            )}
             {showStats && data && (
               <div className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
                 BST {data.bst}

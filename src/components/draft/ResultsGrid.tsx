@@ -4,20 +4,27 @@ import { HoverSprite } from "./HoverSprite";
 import { PoolCard } from "./PoolCard";
 import { TeamPlanner } from "./TeamPlanner";
 
+export type ResultsPlayer = { id: string; label: string; team: DraftEntry[] };
+
 export function ResultsGrid({
   players,
   unpicked,
+  selfId,
 }: {
-  players: { id: string; label: string; team: DraftEntry[] }[];
+  players: ResultsPlayer[];
   unpicked: DraftEntry[];
+  selfId?: string | null;
 }) {
   // Which form (base/Mega/alt) is currently being viewed, per drafted
   // entry id — shared across every team's cards (entry ids are unique
-  // across the whole pool) so the planner can read the exact same active
-  // forms the cards are currently showing, rather than guessing its own.
+  // across the whole pool) so the planner reads the exact same active
+  // forms the cards are currently showing.
   const [formIndex, setFormIndex] = useState<Map<string, number>>(() => new Map());
-  // Only one team's planner is open at a time.
-  const [plannerTeamId, setPlannerTeamId] = useState<string | null>(null);
+  // 4 move slots per drafted entry, lifted up here (not owned by the
+  // planner's carousel) specifically so they persist while browsing other
+  // teams — you can set up move slots for every team, not just whichever
+  // one is currently in view.
+  const [moveSlots, setMoveSlots] = useState<Map<string, string[]>>(() => new Map());
 
   function setForm(entry: DraftEntry, idx: number) {
     setFormIndex((m) => {
@@ -27,81 +34,71 @@ export function ResultsGrid({
     });
   }
 
+  function setMoveSlot(entryId: string, slotIdx: number, moveSlug: string) {
+    setMoveSlots((m) => {
+      const next = new Map(m);
+      const current = next.get(entryId) ?? ["", "", "", ""];
+      const updated = current.slice();
+      updated[slotIdx] = moveSlug;
+      next.set(entryId, updated);
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {players.map((p, idx) => {
-          const plannerOpen = plannerTeamId === p.id;
-          return (
-            <div
-              key={p.id}
-              className={`rounded-2xl border border-border bg-card p-4 shadow ${
-                plannerOpen ? "sm:col-span-2 lg:col-span-3" : ""
-              }`}
-            >
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="flex items-center gap-2 text-base font-bold">
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-accent text-xs font-bold text-accent-foreground">
-                    {idx + 1}
-                  </span>
-                  {p.label}
-                </h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground">{p.team.length}/6</span>
-                  {p.team.length > 0 && players.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setPlannerTeamId(plannerOpen ? null : p.id)}
-                      title="Resistance & coverage planner"
-                      className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
-                        plannerOpen
-                          ? "border-accent bg-accent/15 text-accent"
-                          : "border-border bg-background/40 text-muted-foreground hover:border-accent/50 hover:text-accent"
-                      }`}
-                    >
-                      📋 Planner
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {Array.from({ length: 6 }).map((_, i) => {
-                  const e = p.team[i];
-                  if (!e) {
-                    return (
-                      <div
-                        key={i}
-                        className="aspect-[3/4.2] rounded-xl border border-dashed border-border/40 bg-background/20"
-                      />
-                    );
-                  }
+        {players.map((p, idx) => (
+          <div key={p.id} className="rounded-2xl border border-border bg-card p-4 shadow">
+            <div className="mb-3 flex items-baseline justify-between">
+              <h3 className="text-base font-bold">
+                <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-md bg-accent text-xs font-bold text-accent-foreground">
+                  {idx + 1}
+                </span>
+                {p.label}
+              </h3>
+              <span className="text-[11px] text-muted-foreground">{p.team.length}/6</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {Array.from({ length: 6 }).map((_, i) => {
+                const e = p.team[i];
+                if (!e) {
                   return (
-                    <PoolCard
-                      key={e.id}
-                      entry={e}
-                      pickable={false}
-                      showStats
-                      formIdx={formIndex.get(e.id) ?? 0}
-                      onSelectForm={(fi) => setForm(e, fi)}
+                    <div
+                      key={i}
+                      className="aspect-[3/4.2] rounded-xl border border-dashed border-border/40 bg-background/20"
                     />
                   );
-                })}
-              </div>
-              <div className="mt-2 truncate text-center text-[11px] text-muted-foreground">
-                {p.team.map((e) => e.name).join(" · ")}
-              </div>
-              {plannerOpen && (
-                <TeamPlanner
-                  myTeam={p.team}
-                  opponents={players.filter((o) => o.id !== p.id)}
-                  formIndex={formIndex}
-                  onClose={() => setPlannerTeamId(null)}
-                />
-              )}
+                }
+                return (
+                  <PoolCard
+                    key={e.id}
+                    entry={e}
+                    pickable={false}
+                    showTypeBadges={false}
+                    formIdx={formIndex.get(e.id) ?? 0}
+                    onSelectForm={(fi) => setForm(e, fi)}
+                  />
+                );
+              })}
             </div>
-          );
-        })}
+            <div className="mt-2 truncate text-center text-[11px] text-muted-foreground">
+              {p.team.map((e) => e.name).join(" · ")}
+            </div>
+          </div>
+        ))}
       </div>
+
+      {players.some((p) => p.team.length > 0) && (
+        <TeamPlanner
+          players={players}
+          selfId={selfId ?? null}
+          formIndex={formIndex}
+          moveSlots={moveSlots}
+          setMoveSlot={setMoveSlot}
+        />
+      )}
+
       {unpicked.length > 0 && (
         <details className="rounded-xl border border-border bg-card/40 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-muted-foreground">

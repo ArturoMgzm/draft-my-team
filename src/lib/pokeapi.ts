@@ -114,6 +114,38 @@ export function fetchItem(slug: string): Promise<ItemData | null> {
   return p;
 }
 
+const moveInflight = new Map<string, Promise<string | null>>();
+
+// Fetches just a move's type (e.g. "fire", "water") — enough to classify a
+// planner move slot's attacking type, without pulling in power/PP/effect
+// text PokéAPI also returns.
+export function fetchMoveType(slug: string): Promise<string | null> {
+  const cacheKey = `movetype:${slug}`;
+  const cached = readCache<string>(cacheKey);
+  if (cached) return Promise.resolve(cached);
+
+  const existing = moveInflight.get(slug);
+  if (existing) return existing;
+
+  const p = (async () => {
+    try {
+      const res = await fetch(`https://pokeapi.co/api/v2/move/${slug}`);
+      if (!res.ok) return null;
+      const json = (await res.json()) as { type: { name: string } };
+      const type = json.type?.name ?? null;
+      if (type) writeCache(cacheKey, type);
+      return type;
+    } catch {
+      return null;
+    } finally {
+      moveInflight.delete(slug);
+    }
+  })();
+
+  moveInflight.set(slug, p);
+  return p;
+}
+
 const inflight = new Map<string, Promise<PokemonData | null>>();
 
 export function fetchPokemon(slug: string): Promise<PokemonData | null> {
