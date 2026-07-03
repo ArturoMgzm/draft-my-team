@@ -1,6 +1,6 @@
 import shinyAsset from "@/assets/shiny.mp3.asset.json";
+import { isSoundMuted } from "@/lib/sound-prefs";
 
-const MUTE_KEY = "shinyMuted";
 const DEBOUNCE_MS = 1500;
 
 let audio: HTMLAudioElement | null = null;
@@ -16,19 +16,9 @@ function getAudio(): HTMLAudioElement | null {
   return audio;
 }
 
-export function isShinyMuted(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(MUTE_KEY) === "1";
-}
-
-export function setShinyMuted(muted: boolean) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
-}
-
 export function playShinyChime() {
   if (typeof window === "undefined") return;
-  if (isShinyMuted()) return;
+  if (isSoundMuted()) return;
   const now = Date.now();
   if (now - lastPlayed < DEBOUNCE_MS) return;
   lastPlayed = now;

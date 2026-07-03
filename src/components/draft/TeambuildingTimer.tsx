@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { playTimerAlarm } from "@/lib/timer-alarm";
 
 // Server-synced countdown: timer_ends_at is an absolute deadline pushed to
 // every client via the room's realtime subscription (see useRoom.ts), so
@@ -37,6 +38,19 @@ export function TeambuildingTimer({
 
   const mm = String(Math.floor(remainingSec / 60)).padStart(2, "0");
   const ss = String(remainingSec % 60).padStart(2, "0");
+
+  // Play the alarm exactly once when the timer actually finishes, not on
+  // every render/tick while it stays expired. Keyed on the deadline itself
+  // so a fresh timer (even one started with the same length) always
+  // triggers its own alarm rather than being suppressed by a stale ref.
+  const alarmedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (expired && timerEndsAt && alarmedForRef.current !== timerEndsAt) {
+      alarmedForRef.current = timerEndsAt;
+      playTimerAlarm();
+    }
+    if (!running) alarmedForRef.current = null;
+  }, [expired, timerEndsAt, running]);
 
   const [inputMin, setInputMin] = useState(10);
   const [inputSec, setInputSec] = useState(0);
