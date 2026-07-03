@@ -54,6 +54,8 @@ export type Database = {
           player_order: Json
           pool: Json
           status: string
+          timer_duration_seconds: number | null
+          timer_ends_at: string | null
           updated_at: string
         }
         Insert: {
@@ -66,6 +68,8 @@ export type Database = {
           player_order?: Json
           pool?: Json
           status?: string
+          timer_duration_seconds?: number | null
+          timer_ends_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -78,6 +82,8 @@ export type Database = {
           player_order?: Json
           pool?: Json
           status?: string
+          timer_duration_seconds?: number | null
+          timer_ends_at?: string | null
           updated_at?: string
         }
         Relationships: []
