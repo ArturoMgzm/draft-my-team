@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { isTimerAlarmMuted, playTimerAlarm, setTimerAlarmMuted } from "@/lib/timer-alarm";
+import { playTimerAlarm } from "@/lib/timer-alarm";
 
 // Server-synced countdown: timer_ends_at is an absolute deadline pushed to
 // every client via the room's realtime subscription (see useRoom.ts), so
@@ -51,11 +51,6 @@ export function TeambuildingTimer({
     }
     if (!running) alarmedForRef.current = null;
   }, [expired, timerEndsAt, running]);
-
-  const [alarmMuted, setAlarmMuted] = useState(false);
-  useEffect(() => {
-    setAlarmMuted(isTimerAlarmMuted());
-  }, []);
 
   const [inputMin, setInputMin] = useState(10);
   const [inputSec, setInputSec] = useState(0);
@@ -119,19 +114,6 @@ export function TeambuildingTimer({
             )}
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => {
-            const next = !alarmMuted;
-            setAlarmMuted(next);
-            setTimerAlarmMuted(next);
-          }}
-          title={alarmMuted ? "Timer alarm muted" : "Timer alarm on"}
-          aria-label={alarmMuted ? "Unmute timer alarm" : "Mute timer alarm"}
-          className="rounded-md border border-border bg-card px-2 py-1.5 text-xs hover:bg-secondary"
-        >
-          {alarmMuted ? "🔇" : "🔔"}
-        </button>
       </div>
       {running && (
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
