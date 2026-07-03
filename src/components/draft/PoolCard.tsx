@@ -67,21 +67,29 @@ export function PoolCard({
   showStats,
   formIdx = 0,
   onSelectForm,
+  pickable = true,
 }: {
   entry: DraftEntry;
-  disabled: boolean;
-  onClick: () => void;
+  /** Only meaningful when pickable (default true). */
+  disabled?: boolean;
+  /** Only needed when pickable (default true). */
+  onClick?: () => void;
   showStats?: boolean;
   /** Index into getFormSlugs(entry) for the form currently being viewed. */
   formIdx?: number;
   /** Called with the next form index when the Mega/Multi badge is clicked. */
   onSelectForm?: (idx: number) => void;
+  /** False for a view-only card (e.g. final team roster): still supports
+   * form toggling and right-click-to-flip stats, but no pick action and no
+   * "can't pick this" dimming. */
+  pickable?: boolean;
 }) {
   const forms = getFormSlugs(entry);
   const formOptions = getFormOptions(entry);
   const hasFormSwitch = forms.length > 1 && !!onSelectForm;
   const activeSlug = forms[Math.min(formIdx, forms.length - 1)] ?? entry.slug;
   const isAltForm = formIdx > 0;
+  const isDisabled = pickable && !!disabled;
 
   const [flipped, setFlipped] = useState(false);
   const [dataBySlug, setDataBySlug] = useState<Map<string, PokemonData | null>>(() => new Map());
@@ -113,9 +121,11 @@ export function PoolCard({
       className={`group relative aspect-[3/4.2] w-full rounded-xl border p-2 transition ${
         entry.shiny ? "shiny-frame !border-transparent" : "bg-card"
       } ${
-        disabled
-          ? "border-border/40 opacity-40"
-          : "border-border hover:-translate-y-0.5 hover:border-accent hover:shadow-lg hover:shadow-accent/10"
+        !pickable
+          ? "border-border hover:border-accent/60"
+          : isDisabled
+            ? "border-border/40 opacity-40"
+            : "border-border hover:-translate-y-0.5 hover:border-accent hover:shadow-lg hover:shadow-accent/10"
       }`}
       style={{ perspective: "1000px" }}
     >
@@ -166,10 +176,11 @@ export function PoolCard({
           contains the badge buttons, so badge clicks can't bubble into it. */}
       <button
         type="button"
-        disabled={disabled}
+        disabled={isDisabled}
         onClick={() => {
+          if (!pickable) return;
           if (flipped) return;
-          onClick();
+          onClick?.();
         }}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -177,7 +188,7 @@ export function PoolCard({
         }}
         title="Right-click to flip"
         className={`relative z-0 flex h-full w-full flex-col items-center text-left ${
-          disabled ? "cursor-not-allowed" : "cursor-pointer"
+          !pickable ? "cursor-default" : isDisabled ? "cursor-not-allowed" : "cursor-pointer"
         }`}
         style={{
           transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
