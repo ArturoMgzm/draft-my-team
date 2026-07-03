@@ -1,15 +1,12 @@
 import { useMemo, useState } from "react";
-import {
-  applyRoomAction,
-  type RoomPlayerRow,
-  type RoomRow,
-} from "@/lib/room-client";
+import { applyRoomAction, type RoomPlayerRow, type RoomRow } from "@/lib/room-client";
 import { nextPlayerIndex, rollPool, type DraftEntry } from "@/lib/draft-engine";
 import { TeamsSidebar } from "./TeamsSidebar";
 import { PoolGrid } from "./PoolGrid";
 import { ResultsGrid } from "./ResultsGrid";
 import { playShinyChime } from "@/lib/shiny-sound";
 import { CalcSidebar } from "@/components/calc/CalcSidebar";
+import { TeambuildingTimer } from "./TeambuildingTimer";
 
 export function RoomDraft({
   room,
@@ -57,12 +54,9 @@ export function RoomDraft({
   }, [room.pool, room.picks]);
 
   const totalSlots = orderedPlayers.length * 6;
-  const draftComplete =
-    room.status === "finished" || (room.picks?.length ?? 0) >= totalSlots;
+  const draftComplete = room.status === "finished" || (room.picks?.length ?? 0) >= totalSlots;
 
-  const isMyTurn =
-    !draftComplete &&
-    orderedPlayers[activeIdx]?.player_id === selfId;
+  const isMyTurn = !draftComplete && orderedPlayers[activeIdx]?.player_id === selfId;
 
   // Host with override may pick on behalf of active player
   const canIPick = isMyTurn || (isHost && room.host_override);
@@ -125,6 +119,27 @@ export function RoomDraft({
     await applyRoomAction(room.code, selfId, { type: "toggle_override", value: v });
   }
 
+  async function hostSetTimer(seconds: number | null) {
+    if (!isHost) return;
+    try {
+      await applyRoomAction(room.code, selfId, { type: "set_timer", seconds });
+    } catch (e) {
+      setErr(String((e as Error)?.message ?? e));
+    }
+  }
+
+  async function hostBackToConfig() {
+    if (!isHost) return;
+    if (!confirm("Take everyone back to draft setup? This clears the current pool and picks.")) {
+      return;
+    }
+    try {
+      await applyRoomAction(room.code, selfId, { type: "cancel" });
+    } catch (e) {
+      setErr(String((e as Error)?.message ?? e));
+    }
+  }
+
   const sidebarPlayers = orderedPlayers.map((p, i) => ({
     id: p.player_id,
     label: p.username?.trim() || `Player ${i + 1}`,
@@ -133,20 +148,41 @@ export function RoomDraft({
 
   if (draftComplete) {
     return (
-      <div className="space-y-4">
+      <div className="relative space-y-4">
+        <button
+          onClick={() => setCalcOpen(true)}
+          className="fixed bottom-4 right-4 z-30 rounded-full border border-accent/40 bg-accent/20 px-4 py-2 text-xs font-semibold text-accent shadow-lg hover:bg-accent/30"
+        >
+          🧮 Calculator
+        </button>
+        <CalcSidebar pool={room.pool ?? []} open={calcOpen} onClose={() => setCalcOpen(false)} />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xl font-bold">Final Teams</h2>
           <div className="flex items-center gap-2">
             {isHost && (
-              <button
-                onClick={hostRedraft}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground hover:brightness-110"
-              >
-                Redraft same players
-              </button>
+              <>
+                <button
+                  onClick={hostRedraft}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-bold text-primary-foreground hover:brightness-110"
+                >
+                  Redraft same players
+                </button>
+                <button
+                  onClick={hostBackToConfig}
+                  className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-semibold hover:bg-secondary"
+                >
+                  Back to draft setup
+                </button>
+              </>
             )}
           </div>
         </div>
+        <TeambuildingTimer
+          timerEndsAt={room.timer_ends_at}
+          timerDurationSeconds={room.timer_duration_seconds}
+          isHost={isHost}
+          onSetTimer={hostSetTimer}
+        />
         <ResultsGrid players={sidebarPlayers} unpicked={remainingPool} />
         {err && (
           <div className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs text-primary">
@@ -208,7 +244,8 @@ export function RoomDraft({
             <p className="text-xs text-muted-foreground">
               {isMyTurn ? (
                 <>
-                  <span className="font-semibold text-accent">Your turn.</span> Click a Pokémon to draft.
+                  <span className="font-semibold text-accent">Your turn.</span> Click a Pokémon to
+                  draft.
                 </>
               ) : isHost && room.host_override ? (
                 <>
@@ -260,10 +297,7 @@ function ConfirmDialog({
   onCancel: () => void;
 }) {
   return (
-    <div
-      onClick={onCancel}
-      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-    >
+    <div onClick={onCancel} className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
       <div
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl"

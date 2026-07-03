@@ -31,6 +31,14 @@ export type RoomRow = {
   picks: { entryId: string; playerId: string }[];
   player_order: string[];
   host_override: boolean;
+  /** Absolute server-time deadline for the host's teambuilding timer, or
+   * null if no timer is running. Every client derives its own countdown
+   * from this shared anchor (see useRoom's realtime subscription), rather
+   * than trusting each client's own clock for anything but rendering. */
+  timer_ends_at: string | null;
+  /** Original length of the current timer, for a progress bar. Null when
+   * no timer is running. */
+  timer_duration_seconds: number | null;
 };
 
 export type RoomPlayerRow = {
@@ -52,13 +60,10 @@ export type RoomAction =
   | { type: "undo" }
   | { type: "redraft"; pool: DraftEntry[] }
   | { type: "cancel" }
+  | { type: "set_timer"; seconds: number | null }
   | { type: "pick"; entryId: string; forPlayer?: string };
 
-export async function applyRoomAction(
-  code: string,
-  playerId: string,
-  action: RoomAction,
-) {
+export async function applyRoomAction(code: string, playerId: string, action: RoomAction) {
   const { data, error } = await supabase.rpc("apply_room_action", {
     _code: code.toUpperCase(),
     _player_id: playerId,
