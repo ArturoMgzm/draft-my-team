@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchMoveType, fetchPokemon, type PokemonData } from "@/lib/pokeapi";
+import { fetchMoveInfo, fetchPokemon, type MoveInfo, type PokemonData } from "@/lib/pokeapi";
 import { getFormSlugs, type DraftEntry } from "@/lib/draft-engine";
 import { slugToMoveName } from "@/lib/calc-adapter";
 import {
@@ -48,11 +48,11 @@ function useTeamInfo(team: DraftEntry[], formIndex: Map<string, number>): MonInf
   return team.map((entry, i) => ({ entry, data: dataMap.get(slugs[i]) ?? null }));
 }
 
-// Fetches the type of every currently-filled move slug across the given
-// entries, deduped. Moves are shared across many species, so this caches
-// well over the course of a session.
-function useMoveTypes(moveSlots: Map<string, string[]>, entries: DraftEntry[]) {
-  const [typeMap, setTypeMap] = useState<Map<string, string | null>>(() => new Map());
+// Fetches type + damage-class info for every currently-filled move slug
+// across the given entries, deduped. Moves are shared across many species,
+// so this caches well over the course of a session.
+function useMoveInfos(moveSlots: Map<string, string[]>, entries: DraftEntry[]) {
+  const [infoMap, setInfoMap] = useState<Map<string, MoveInfo | null>>(() => new Map());
   const allSlugs = Array.from(
     new Set(entries.flatMap((e) => (moveSlots.get(e.id) ?? []).filter(Boolean))),
   );
@@ -60,9 +60,9 @@ function useMoveTypes(moveSlots: Map<string, string[]>, entries: DraftEntry[]) {
 
   useEffect(() => {
     let alive = true;
-    Promise.all(allSlugs.map(async (s) => [s, await fetchMoveType(s)] as const)).then((pairs) => {
+    Promise.all(allSlugs.map(async (s) => [s, await fetchMoveInfo(s)] as const)).then((pairs) => {
       if (!alive) return;
-      setTypeMap(new Map(pairs));
+      setInfoMap(new Map(pairs));
     });
     return () => {
       alive = false;
@@ -70,22 +70,28 @@ function useMoveTypes(moveSlots: Map<string, string[]>, entries: DraftEntry[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  return typeMap;
+  return infoMap;
 }
 
 // The attacking types actually used in the checks for one Pokémon: the
-// types of whichever move slots are filled in, plus — only if at least one
-// slot is still empty — its own type(s) as a generic stand-in, so the
-// planner stays useful before you've filled in real coverage moves. Once
-// all 4 slots are set, only the chosen moves' types count.
+// types of whichever move slots are filled in with a *damaging* move
+// (status moves like Swords Dance or Toxic don't attack, so they're
+// excluded even though PokéAPI still reports a type for them), plus — only
+// if at least one slot is still empty — its own type(s) as a generic
+// stand-in, so the planner stays useful before you've filled in real
+// coverage moves. Once all 4 slots are set, only the chosen damaging
+// moves' types count.
 function attackTypesFor(
   info: MonInfo,
   moveSlots: Map<string, string[]>,
-  moveTypes: Map<string, string | null>,
+  moveInfos: Map<string, MoveInfo | null>,
 ): string[] {
   const slots = moveSlots.get(info.entry.id) ?? ["", "", "", ""];
   const filled = slots.filter(Boolean);
-  const filledTypes = filled.map((slug) => moveTypes.get(slug)).filter((t): t is string => !!t);
+  const filledTypes = filled
+    .map((slug) => moveInfos.get(slug))
+    .filter((m): m is MoveInfo => !!m && m.isDamaging)
+    .map((m) => m.type);
   const anyEmpty = slots.some((s) => !s);
   const ownTypes = info.data?.types ?? [];
   const combined = anyEmpty ? [...filledTypes, ...ownTypes] : filledTypes;
@@ -95,18 +101,18 @@ function attackTypesFor(
 type TypeResult = { type: string; base: number; adjustments: AbilityAdjustment[] };
 type Matchup = { multiplier: number; perType: TypeResult[]; loading: boolean };
 
-// The attacker's available attack types (moves + STAB fallback) vs the
-// defender's typing/abilities, taking the highest multiplier across those
-// attack types — "worst case for the defender" and "best case for the
-// attacker" are the same value, just opposite framing.
+// The attacker's available attack types (damaging moves + STAB fallback)
+// vs the defender's typing/abilities, taking the highest multiplier across
+// those attack types — "worst case for the defender" and "best case for
+// the attacker" are the same value, just opposite framing.
 function typeMatchup(
   attacker: MonInfo,
   defender: MonInfo,
   moveSlots: Map<string, string[]>,
-  moveTypes: Map<string, string | null>,
+  moveInfos: Map<string, MoveInfo | null>,
 ): Matchup {
   if (!attacker.data || !defender.data) return { multiplier: 1, perType: [], loading: true };
-  const attackTypes = attackTypesFor(attacker, moveSlots, moveTypes);
+  const attackTypes = attackTypesFor(attacker, moveSlots, moveInfos);
   if (attackTypes.length === 0) return { multiplier: 1, perType: [], loading: false };
   const perType = attackTypes.map((t) => {
     const { base, adjustments } = defenseMatchup(t, defender.data!.types, defender.data!.abilities);
@@ -118,7 +124,7 @@ function typeMatchup(
 
 function matchupTooltip(m: Matchup): string {
   if (m.loading) return "Loading…";
-  if (m.perType.length === 0) return "No moves or types to check yet";
+  if (m.perType.length === 0) return "No damaging moves or types to check yet";
   return m.perType
     .map((r) => {
       const abilityPart = r.adjustments.length
@@ -157,18 +163,18 @@ function MonHeaderCell({ info }: { info: MonInfo }) {
   return (
     <div className="flex flex-col items-center gap-0.5" title={info.entry.name}>
       {info.data?.sprite ? (
-        <img src={info.data.sprite} alt="" className="h-7 w-7 object-contain" />
+        <img src={info.data.sprite} alt="" className="h-8 w-8 object-contain" />
       ) : (
-        <div className="h-7 w-7" />
+        <div className="h-8 w-8" />
       )}
-      <span className="max-w-[40px] truncate text-center text-[8px] text-muted-foreground">
+      <span className="max-w-[52px] truncate text-center text-[9px] text-muted-foreground">
         {info.entry.name}
       </span>
     </div>
   );
 }
 
-// ---- Move-slot carousel card --------------------------------------------
+// ---- Move-slot cards for the viewed team ---------------------------------
 
 function PlannerMonCard({
   info,
@@ -217,37 +223,61 @@ function PlannerMonCard({
 }
 
 // ---- Matchup grid ---------------------------------------------------------
+//
+// Attacking/defending labels sit directly against their axis — a rotated
+// label to the left of the rows, a horizontal label above the columns —
+// rather than a floating legend disconnected from either axis. The grid
+// itself is sized to a fixed, readable cell size (not stretched to the
+// panel's full width, which for only 6 columns would make each cell
+// enormous) and centered by its caller.
 
 function MatchupGrid({
   attackers,
   defenders,
+  attackerLabel,
+  defenderLabel,
   moveSlots,
-  moveTypes,
+  moveInfos,
 }: {
   attackers: MonInfo[];
   defenders: MonInfo[];
+  attackerLabel: string;
+  defenderLabel: string;
   moveSlots: Map<string, string[]>;
-  moveTypes: Map<string, string | null>;
+  moveInfos: Map<string, MoveInfo | null>;
 }) {
   return (
-    <div className="overflow-x-auto">
-      <div
-        className="inline-grid gap-0.5"
-        style={{ gridTemplateColumns: `48px repeat(${defenders.length}, 34px)` }}
-      >
-        <div />
-        {defenders.map((d) => (
-          <MonHeaderCell key={d.entry.id} info={d} />
-        ))}
-        {attackers.map((a) => (
-          <FragmentRow
-            key={a.entry.id}
-            attacker={a}
-            defenders={defenders}
-            moveSlots={moveSlots}
-            moveTypes={moveTypes}
-          />
-        ))}
+    <div className="flex items-stretch justify-center gap-2 overflow-x-auto">
+      <div className="flex shrink-0 items-center justify-center">
+        <span
+          className="whitespace-nowrap text-[10px] font-bold text-primary"
+          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+        >
+          ⚔ Attacking: {attackerLabel}
+        </span>
+      </div>
+      <div className="shrink-0">
+        <div className="mb-1 text-center text-[10px] font-bold text-chart-2">
+          🛡 Defending: {defenderLabel}
+        </div>
+        <div
+          className="inline-grid gap-1"
+          style={{ gridTemplateColumns: `64px repeat(${defenders.length}, 52px)` }}
+        >
+          <div />
+          {defenders.map((d) => (
+            <MonHeaderCell key={d.entry.id} info={d} />
+          ))}
+          {attackers.map((a) => (
+            <FragmentRow
+              key={a.entry.id}
+              attacker={a}
+              defenders={defenders}
+              moveSlots={moveSlots}
+              moveInfos={moveInfos}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -257,12 +287,12 @@ function FragmentRow({
   attacker,
   defenders,
   moveSlots,
-  moveTypes,
+  moveInfos,
 }: {
   attacker: MonInfo;
   defenders: MonInfo[];
   moveSlots: Map<string, string[]>;
-  moveTypes: Map<string, string | null>;
+  moveInfos: Map<string, MoveInfo | null>;
 }) {
   return (
     <>
@@ -270,12 +300,12 @@ function FragmentRow({
         <MonHeaderCell info={attacker} />
       </div>
       {defenders.map((d) => {
-        const m = typeMatchup(attacker, d, moveSlots, moveTypes);
+        const m = typeMatchup(attacker, d, moveSlots, moveInfos);
         return (
           <div
             key={d.entry.id}
             title={`${attacker.entry.name} → ${d.entry.name}\n${matchupTooltip(m)}`}
-            className={`flex aspect-square items-center justify-center rounded text-[10px] font-bold tabular-nums ${
+            className={`flex aspect-square items-center justify-center rounded text-xs font-bold tabular-nums ${
               m.loading ? "bg-muted/40 text-muted-foreground" : cellColorClass(m.multiplier)
             }`}
           >
@@ -287,19 +317,15 @@ function FragmentRow({
   );
 }
 
-// ---- Coverage summary (no opponent picked yet) ---------------------------
+// ---- Coverage summary (viewing your own team) -----------------------------
 
-const COVERAGE_TIERS: {
-  key: keyof ReturnType<typeof teamCoverageSummary>;
-  mult: number;
-  colorClass: string;
-}[] = [
-  { key: "x4", mult: 4, colorClass: "border-chart-2 bg-chart-2/20 text-chart-2" },
-  { key: "x2", mult: 2, colorClass: "border-chart-2/40 bg-chart-2/10 text-chart-2" },
-  { key: "x1", mult: 1, colorClass: "border-border bg-background/40 text-muted-foreground" },
-  { key: "x05", mult: 0.5, colorClass: "border-primary/40 bg-primary/10 text-primary" },
-  { key: "x025", mult: 0.25, colorClass: "border-primary/60 bg-primary/15 text-primary" },
-  { key: "x0", mult: 0, colorClass: "border-primary bg-primary/20 text-primary" },
+const COVERAGE_TIERS: { key: keyof ReturnType<typeof teamCoverageSummary>; mult: number }[] = [
+  { key: "x4", mult: 4 },
+  { key: "x2", mult: 2 },
+  { key: "x1", mult: 1 },
+  { key: "x05", mult: 0.5 },
+  { key: "x025", mult: 0.25 },
+  { key: "x0", mult: 0 },
 ];
 
 function CoverageSummaryView({ summary }: { summary: ReturnType<typeof teamCoverageSummary> }) {
@@ -310,22 +336,13 @@ function CoverageSummaryView({ summary }: { summary: ReturnType<typeof teamCover
           key={tier.key}
           title={effectivenessLabel(tier.mult)}
           types={summary[tier.key]}
-          colorClass={tier.colorClass}
         />
       ))}
     </div>
   );
 }
 
-function SummaryList({
-  title,
-  types,
-  colorClass,
-}: {
-  title: string;
-  types: string[];
-  colorClass: string;
-}) {
+function SummaryList({ title, types }: { title: string; types: string[] }) {
   return (
     <div>
       <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -336,12 +353,7 @@ function SummaryList({
       ) : (
         <div className="flex flex-wrap gap-1">
           {types.map((t) => (
-            <span
-              key={t}
-              className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${colorClass}`}
-            >
-              {t}
-            </span>
+            <TypeBadge key={t} type={t.toLowerCase()} />
           ))}
         </div>
       )}
@@ -365,34 +377,35 @@ export function TeamPlanner({
   setMoveSlot: (entryId: string, slotIdx: number, moveSlug: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const defaultIdx = Math.max(
+  const myIdx = Math.max(
     0,
     players.findIndex((p) => p.id === selfId),
   );
-  const [focusedIdx, setFocusedIdx] = useState(defaultIdx);
-  const [opponentId, setOpponentId] = useState<string | null>(null);
-  // "myAttack": focused team attacks, opponent defends (coverage-style).
-  // "myDefense": opponent attacks, focused team defends (resistance-style).
-  const [direction, setDirection] = useState<"myAttack" | "myDefense">("myDefense");
+  // The carousel — arrows only move which team's cards/movesets are shown
+  // here, nothing else. "My team" (below) is fixed to the viewer's own
+  // team regardless of where the carousel currently points.
+  const [viewedIdx, setViewedIdx] = useState(myIdx);
+  // "mine": my team attacks, viewed team defends (coverage-style).
+  // "theirs": viewed team attacks, my team defends (resistance-style).
+  const [direction, setDirection] = useState<"mine" | "theirs">("theirs");
 
-  const focused = players[Math.min(focusedIdx, players.length - 1)];
-  const opponentOptions = players.filter((p) => p.id !== focused?.id && p.team.length > 0);
-  const opponent = opponentOptions.find((o) => o.id === opponentId) ?? null;
+  const myTeam = players[Math.min(myIdx, players.length - 1)];
+  const viewed = players[Math.min(viewedIdx, players.length - 1)];
+  const viewingSelf = viewed?.id === myTeam?.id;
 
   function goTo(delta: number) {
-    setOpponentId(null);
-    setFocusedIdx((i) => (i + delta + players.length) % players.length);
+    setViewedIdx((i) => (i + delta + players.length) % players.length);
   }
 
-  const myInfo = useTeamInfo(focused?.team ?? [], formIndex);
-  const oppInfo = useTeamInfo(opponent?.team ?? [], formIndex);
-  const allEntriesInView = [...(focused?.team ?? []), ...(opponent?.team ?? [])];
-  const moveTypes = useMoveTypes(moveSlots, allEntriesInView);
+  const viewedInfo = useTeamInfo(viewed?.team ?? [], formIndex);
+  const myInfo = useTeamInfo(viewingSelf ? [] : (myTeam?.team ?? []), formIndex);
+  const allEntriesInView = [...(viewed?.team ?? []), ...(viewingSelf ? [] : (myTeam?.team ?? []))];
+  const moveInfos = useMoveInfos(moveSlots, allEntriesInView);
 
-  const myAttackTypes = myInfo.flatMap((m) => attackTypesFor(m, moveSlots, moveTypes));
-  const coverageSummary = teamCoverageSummary(myAttackTypes);
+  const viewedAttackTypes = viewedInfo.flatMap((m) => attackTypesFor(m, moveSlots, moveInfos));
+  const coverageSummary = teamCoverageSummary(viewedAttackTypes);
 
-  if (!focused) return null;
+  if (!viewed) return null;
 
   return (
     <section
@@ -410,7 +423,7 @@ export function TeamPlanner({
           <span>
             <span className="block text-sm font-bold text-accent">Team Planner</span>
             <span className="block text-[11px] text-muted-foreground">
-              Resistance &amp; coverage checker — see how any two teams match up type-for-type
+              Resistance &amp; coverage checker — see how your team matches up type-for-type
             </span>
           </span>
         </span>
@@ -424,7 +437,7 @@ export function TeamPlanner({
 
       {open && (
         <div className="border-t border-accent/30 px-4 py-4">
-          {/* Carousel header */}
+          {/* Carousel header — only changes which team's cards are shown below */}
           <div className="mb-3 flex items-center justify-center gap-3">
             <button
               type="button"
@@ -436,9 +449,9 @@ export function TeamPlanner({
               ←
             </button>
             <div className="text-center">
-              <div className="text-sm font-bold">{focused.label}</div>
+              <div className="text-sm font-bold">{viewed.label}</div>
               <div className="text-[10px] text-muted-foreground">
-                {focused.id === selfId ? "Your team" : "Team"} · {focusedIdx + 1}/{players.length}
+                {viewingSelf ? "Your team" : "Team"} · {viewedIdx + 1}/{players.length}
               </div>
             </div>
             <button
@@ -452,9 +465,9 @@ export function TeamPlanner({
             </button>
           </div>
 
-          {/* Move-slot cards for the focused team */}
+          {/* Move-slot cards for whichever team the carousel is showing */}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {myInfo.map((info) => (
+            {viewedInfo.map((info) => (
               <PlannerMonCard
                 key={info.entry.id}
                 info={info}
@@ -464,85 +477,52 @@ export function TeamPlanner({
             ))}
           </div>
 
-          {/* Opponent picker */}
-          {opponentOptions.length > 0 && (
-            <div className="mt-4">
-              <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                Compare against
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {opponentOptions.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => setOpponentId(opponentId === o.id ? null : o.id)}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
-                      opponentId === o.id
-                        ? "border-accent bg-accent/15 text-accent"
-                        : "border-border bg-background/40 text-muted-foreground hover:border-accent/50 hover:text-accent"
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Grid or coverage summary */}
+          {/* Graph or coverage summary */}
           <div className="mt-4">
-            {!opponent ? (
+            {viewingSelf ? (
               <>
                 <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {focused.label}&apos;s type coverage
+                  {myTeam.label}&apos;s type coverage
                 </div>
                 <CoverageSummaryView summary={coverageSummary} />
                 <p className="mt-2 text-[9px] text-muted-foreground">
-                  Based on typing plus any moves filled in above. Pick a team above to check actual
-                  matchups instead.
+                  Based on typing plus any damaging moves filled in above. Browse to another team
+                  with the arrows above to see an actual matchup instead.
                 </p>
               </>
             ) : (
               <>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    {focused.label} vs {opponent.label}
+                    {myTeam.label} vs {viewed.label}
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      setDirection((d) => (d === "myAttack" ? "myDefense" : "myAttack"))
-                    }
+                    onClick={() => setDirection((d) => (d === "mine" ? "theirs" : "mine"))}
                     className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-semibold hover:bg-secondary"
                     title="Swap which side is attacking"
                   >
                     ⇄ Swap attacker/defender
                   </button>
                 </div>
-                <div className="mb-2 flex items-center justify-between text-[10px] font-semibold">
-                  <span className="rounded bg-primary/15 px-1.5 py-0.5 text-primary">
-                    ⚔ Attacking: {direction === "myAttack" ? focused.label : opponent.label}
-                  </span>
-                  <span className="rounded bg-chart-2/15 px-1.5 py-0.5 text-chart-2">
-                    🛡 Defending: {direction === "myAttack" ? opponent.label : focused.label}
-                  </span>
-                </div>
                 <MatchupGrid
-                  attackers={direction === "myAttack" ? myInfo : oppInfo}
-                  defenders={direction === "myAttack" ? oppInfo : myInfo}
+                  attackers={direction === "mine" ? myInfo : viewedInfo}
+                  defenders={direction === "mine" ? viewedInfo : myInfo}
+                  attackerLabel={direction === "mine" ? myTeam.label : viewed.label}
+                  defenderLabel={direction === "mine" ? viewed.label : myTeam.label}
                   moveSlots={moveSlots}
-                  moveTypes={moveTypes}
+                  moveInfos={moveInfos}
                 />
               </>
             )}
           </div>
 
           <p className="mt-3 text-[9px] leading-relaxed text-muted-foreground">
-            Uses each Pokémon&apos;s filled-in moves; any empty slot falls back to that
-            Pokémon&apos;s own type(s) as a generic same-type attack. Also accounts for common
-            defensive abilities (Levitate, Water Absorb, Thick Fat, Filter, etc.) as possibilities —
-            hover a cell for the full breakdown, since a team&apos;s actual ability isn&apos;t
-            locked in here.
+            Uses each Pokémon&apos;s filled-in damaging moves; status moves (Swords Dance, Toxic,
+            etc.) don&apos;t count, and any empty slot falls back to that Pokémon&apos;s own type(s)
+            as a generic same-type attack. Also accounts for common defensive abilities (Levitate,
+            Water Absorb, Thick Fat, Filter, etc.) as possibilities — hover a cell for the full
+            breakdown, since a team&apos;s actual ability isn&apos;t locked in here.
           </p>
         </div>
       )}

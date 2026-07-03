@@ -114,14 +114,17 @@ export function fetchItem(slug: string): Promise<ItemData | null> {
   return p;
 }
 
-const moveInflight = new Map<string, Promise<string | null>>();
+export type MoveInfo = { type: string; isDamaging: boolean };
 
-// Fetches just a move's type (e.g. "fire", "water") — enough to classify a
-// planner move slot's attacking type, without pulling in power/PP/effect
-// text PokéAPI also returns.
-export function fetchMoveType(slug: string): Promise<string | null> {
-  const cacheKey = `movetype:${slug}`;
-  const cached = readCache<string>(cacheKey);
+const moveInflight = new Map<string, Promise<MoveInfo | null>>();
+
+// Fetches a move's type plus whether it's damaging (physical/special) vs a
+// status move — status moves (Swords Dance, Toxic, Recover, ...) don't
+// attack, so they shouldn't count toward a team's offensive type coverage
+// even though PokéAPI still reports a "type" for them.
+export function fetchMoveInfo(slug: string): Promise<MoveInfo | null> {
+  const cacheKey = `moveinfo:${slug}`;
+  const cached = readCache<MoveInfo>(cacheKey);
   if (cached) return Promise.resolve(cached);
 
   const existing = moveInflight.get(slug);
@@ -131,10 +134,15 @@ export function fetchMoveType(slug: string): Promise<string | null> {
     try {
       const res = await fetch(`https://pokeapi.co/api/v2/move/${slug}`);
       if (!res.ok) return null;
-      const json = (await res.json()) as { type: { name: string } };
+      const json = (await res.json()) as {
+        type: { name: string };
+        damage_class: { name: string } | null;
+      };
       const type = json.type?.name ?? null;
-      if (type) writeCache(cacheKey, type);
-      return type;
+      if (!type) return null;
+      const info: MoveInfo = { type, isDamaging: json.damage_class?.name !== "status" };
+      writeCache(cacheKey, info);
+      return info;
     } catch {
       return null;
     } finally {
@@ -144,6 +152,21 @@ export function fetchMoveType(slug: string): Promise<string | null> {
 
   moveInflight.set(slug, p);
   return p;
+}
+
+// Mega Evolution never changes what moves a Pokémon knows — you always
+// teach moves to the base form before Mega Evolving, and the Mega form
+// simply keeps whatever moveset it already had. PokéAPI's (still-growing)
+// Champions movepool data doesn't always have moves separately populated
+// for every alt-form entry yet, so when a Mega slug comes back with an
+// empty moves list, this falls back to the base species' moves — which is
+// mechanically correct, not just a workaround.
+const MEGA_SUFFIX_RE = /-mega(-x|-y)?$/;
+
+function baseSlugForMega(slug: string): string | null {
+  if (!MEGA_SUFFIX_RE.test(slug)) return null;
+  const base = slug.replace(MEGA_SUFFIX_RE, "");
+  return base || null;
 }
 
 const inflight = new Map<string, Promise<PokemonData | null>>();
@@ -201,7 +224,7 @@ export function fetchPokemon(slug: string): Promise<PokemonData | null> {
         stats.specialAttack +
         stats.specialDefense +
         stats.speed;
-      const moves = Array.from(
+      let moves = Array.from(
         new Set(
           json.moves
             .filter((m) =>
@@ -210,6 +233,13 @@ export function fetchPokemon(slug: string): Promise<PokemonData | null> {
             .map((m) => m.move.name),
         ),
       );
+      if (moves.length === 0) {
+        const baseSlug = baseSlugForMega(slug);
+        if (baseSlug && baseSlug !== slug) {
+          const baseData = await fetchPokemon(baseSlug);
+          if (baseData && baseData.moves.length > 0) moves = baseData.moves;
+        }
+      }
       const data: PokemonData = {
         id: json.id,
         name: json.name,

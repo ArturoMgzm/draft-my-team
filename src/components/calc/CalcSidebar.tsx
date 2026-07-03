@@ -323,6 +323,7 @@ function SideCard({
 
       {entry && (
         <NaturePicker
+          key={state.entryId}
           value={state.nature}
           onChange={(v) => setState((s) => ({ ...s, nature: v }))}
         />
@@ -510,24 +511,40 @@ const NATURE_STATS: { key: NatureStatKey; label: string }[] = [
 // The resulting nature name is still shown (and still the source of truth
 // passed to the calc) — this is just a friendlier way to set it.
 function NaturePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const current = NATURES.find((n) => n.name === value) ?? NATURES[0];
-  const plus = current.plus;
-  const minus = current.minus;
+  // plus/minus are tracked as this component's OWN state, not re-derived
+  // from `value` on every render. natureFromPlusMinus only produces a real
+  // nature once BOTH sides are set — if plus/minus were derived fresh from
+  // `value` each time, a single click (say +ATK with minus still unset)
+  // would call onChange("Hardy") immediately, which writes "Hardy" back
+  // into the parent, which re-renders this component with value="Hardy",
+  // which re-derives plus=null — silently erasing the click before a
+  // second one could ever complete the pair. Local state breaks that loop;
+  // the parent only needs to force a remount (via `key`) when the
+  // selected species changes, to reset back to neutral.
+  const initial = NATURES.find((n) => n.name === value) ?? NATURES[0];
+  const [plus, setPlus] = useState<NatureStatKey | null>(initial.plus);
+  const [minus, setMinus] = useState<NatureStatKey | null>(initial.minus);
+
+  function commit(nextPlus: NatureStatKey | null, nextMinus: NatureStatKey | null) {
+    setPlus(nextPlus);
+    setMinus(nextMinus);
+    onChange(natureFromPlusMinus(nextPlus, nextMinus));
+  }
 
   function pickPlus(stat: NatureStatKey) {
     if (plus === stat) {
-      onChange(natureFromPlusMinus(null, minus));
+      commit(null, minus);
     } else {
       // A stat can't be both boosted and reduced — picking it as the plus
       // stat clears it from the minus slot if it was there.
-      onChange(natureFromPlusMinus(stat, minus === stat ? null : minus));
+      commit(stat, minus === stat ? null : minus);
     }
   }
   function pickMinus(stat: NatureStatKey) {
     if (minus === stat) {
-      onChange(natureFromPlusMinus(plus, null));
+      commit(plus, null);
     } else {
-      onChange(natureFromPlusMinus(plus === stat ? null : plus, stat));
+      commit(plus === stat ? null : plus, stat);
     }
   }
 
