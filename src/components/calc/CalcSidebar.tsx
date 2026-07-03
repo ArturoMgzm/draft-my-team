@@ -11,6 +11,7 @@ import {
   computeStatAtL50,
   DEFAULT_FIELD,
   NATURES,
+  natureFromPlusMinus,
   natureMultiplier,
   runCalc,
   slugToSpeciesName,
@@ -23,6 +24,7 @@ import {
   ZERO_SP,
   type FieldConfig,
   type MoveResult,
+  type NatureStatKey,
   type SideConfig,
   type SpAlloc,
 } from "@/lib/calc-adapter";
@@ -39,6 +41,10 @@ import { CHAMPIONS_ITEMS } from "@/lib/champions-items";
 
 type SideKey = "atk" | "def";
 
+type BoostAlloc = { atk: number; def: number; spa: number; spd: number; spe: number };
+
+const ZERO_BOOSTS: BoostAlloc = { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
+
 type SideDraft = {
   entryId: string | null;
   /** Index into getFormOptions(entry) — which base/mega/alt form is active. */
@@ -48,6 +54,8 @@ type SideDraft = {
   nature: string;
   status: SideConfig["status"];
   sp: SpAlloc;
+  /** In-battle stat stages, -6 to +6 (e.g. Swords Dance = { atk: 2 }). */
+  boosts: BoostAlloc;
   moves: string[]; // 4 slots, slug or ""
 };
 
@@ -59,6 +67,7 @@ const EMPTY_SIDE: SideDraft = {
   nature: "Hardy",
   status: "",
   sp: { ...ZERO_SP },
+  boosts: { ...ZERO_BOOSTS },
   moves: ["", "", "", ""],
 };
 
@@ -189,29 +198,14 @@ function SideCard({
   const activeForm = formOptions[Math.min(state.formIdx, formOptions.length - 1)] ?? null;
   const data = usePokemonData(activeForm?.slug);
 
-  // Reset dependent fields whenever the selected Pokémon changes.
-  useEffect(() => {
-    setState((s) => ({
-      ...s,
-      formIdx: 0,
-      ability: "",
-      nature: "Hardy",
-      moves: ["", "", "", ""],
-      sp: { ...ZERO_SP },
-    }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.entryId]);
-
-  // Ability and movepool are form-specific — Mega Evolution changes the
-  // ability, and regional/alt forms can learn a different moveset — so
-  // reset those when the viewed form changes. SP and held item persist
-  // across a form switch (a Mega Evolution keeps the trained Pokémon's
-  // stat investment; the held item doesn't change just because you're
-  // previewing a different form).
-  useEffect(() => {
-    setState((s) => ({ ...s, ability: "", moves: ["", "", "", ""] }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.formIdx]);
+  // NOTE: species/form changes intentionally do NOT reset dependent fields
+  // via an effect keyed on state.entryId/formIdx — that used to fire on
+  // *any* change to those values, including a wholesale swap (Attacker and
+  // Defender exchanging their entire SideDraft), silently wiping out the
+  // swapped-in ability/nature/item/SP right after the swap. Resets now
+  // happen inline, only at the exact moment of the specific user action
+  // that should trigger them (picking a new Pokémon, or toggling form) —
+  // see the <select> onChange and the form-toggle button below.
 
   const spTotal =
     state.sp.hp + state.sp.atk + state.sp.def + state.sp.spa + state.sp.spd + state.sp.spe;
@@ -250,7 +244,19 @@ function SideCard({
         <div className="min-w-0 flex-1 space-y-1.5">
           <select
             value={state.entryId ?? ""}
-            onChange={(e) => setState((s) => ({ ...s, entryId: e.target.value || null }))}
+            onChange={(e) => {
+              const newId = e.target.value || null;
+              setState((s) => ({
+                ...s,
+                entryId: newId,
+                formIdx: 0,
+                ability: "",
+                nature: "Hardy",
+                boosts: { ...ZERO_BOOSTS },
+                moves: ["", "", "", ""],
+                sp: { ...ZERO_SP },
+              }));
+            }}
             className="w-full min-w-0 rounded-md border border-border bg-input px-2 py-1.5 text-sm"
           >
             <option value="">— Select Pokémon —</option>
@@ -277,7 +283,9 @@ function SideCard({
                   <button
                     key={f.slug}
                     type="button"
-                    onClick={() => setState((s) => ({ ...s, formIdx: i }))}
+                    onClick={() =>
+                      setState((s) => ({ ...s, formIdx: i, ability: "", moves: ["", "", "", ""] }))
+                    }
                     className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold transition ${
                       isActive
                         ? `${accent.border} ${accent.bg} ${accent.text}`
@@ -304,17 +312,6 @@ function SideCard({
           />
           <ItemPicker value={state.item} onChange={(v) => setState((s) => ({ ...s, item: v }))} />
           <LabeledSelect
-            label="Nature"
-            value={state.nature}
-            onChange={(v) => setState((s) => ({ ...s, nature: v }))}
-            options={NATURES.map((n) => n.name)}
-            format={(v) => {
-              const n = NATURES.find((x) => x.name === v);
-              if (!n || !n.plus) return `${v} (neutral)`;
-              return `${v} (+${n.plus.toUpperCase()}/-${n.minus?.toUpperCase()})`;
-            }}
-          />
-          <LabeledSelect
             label="Status"
             value={state.status ?? ""}
             onChange={(v) => setState((s) => ({ ...s, status: v as SideConfig["status"] }))}
@@ -322,6 +319,20 @@ function SideCard({
             format={(v) => STATUSES.find((s) => (s.value ?? "") === v)?.label ?? "None"}
           />
         </div>
+      )}
+
+      {entry && (
+        <NaturePicker
+          value={state.nature}
+          onChange={(v) => setState((s) => ({ ...s, nature: v }))}
+        />
+      )}
+
+      {entry && (
+        <BoostPicker
+          value={state.boosts}
+          onChange={(next) => setState((s) => ({ ...s, boosts: next }))}
+        />
       )}
 
       {entry && (
@@ -483,6 +494,177 @@ function SideCard({
         </div>
       )}
     </section>
+  );
+}
+
+const NATURE_STATS: { key: NatureStatKey; label: string }[] = [
+  { key: "atk", label: "Atk" },
+  { key: "def", label: "Def" },
+  { key: "spa", label: "SpA" },
+  { key: "spd", label: "SpD" },
+  { key: "spe", label: "Spe" },
+];
+
+// Lets the person pick a nature by choosing which stat it helps and which
+// it hurts directly, instead of hunting through a 25-item name dropdown.
+// The resulting nature name is still shown (and still the source of truth
+// passed to the calc) — this is just a friendlier way to set it.
+function NaturePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const current = NATURES.find((n) => n.name === value) ?? NATURES[0];
+  const plus = current.plus;
+  const minus = current.minus;
+
+  function pickPlus(stat: NatureStatKey) {
+    if (plus === stat) {
+      onChange(natureFromPlusMinus(null, minus));
+    } else {
+      // A stat can't be both boosted and reduced — picking it as the plus
+      // stat clears it from the minus slot if it was there.
+      onChange(natureFromPlusMinus(stat, minus === stat ? null : minus));
+    }
+  }
+  function pickMinus(stat: NatureStatKey) {
+    if (minus === stat) {
+      onChange(natureFromPlusMinus(plus, null));
+    } else {
+      onChange(natureFromPlusMinus(plus === stat ? null : plus, stat));
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="mb-1 flex items-baseline justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span>Nature</span>
+        <span className="font-semibold text-foreground">
+          {value}
+          {plus ? ` (+${plus.toUpperCase()}/−${minus?.toUpperCase()})` : " (neutral)"}
+        </span>
+      </div>
+      <div className="grid grid-cols-5 gap-1">
+        {NATURE_STATS.map(({ key, label }) => (
+          <button
+            key={`plus-${key}`}
+            type="button"
+            onClick={() => pickPlus(key)}
+            title={`Raise ${label}`}
+            className={`rounded-md border px-1 py-1 text-[10px] font-bold transition ${
+              plus === key
+                ? "border-accent bg-accent/15 text-accent"
+                : "border-border bg-background/40 text-muted-foreground hover:border-accent/50 hover:text-accent"
+            }`}
+          >
+            +{label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-1 grid grid-cols-5 gap-1">
+        {NATURE_STATS.map(({ key, label }) => (
+          <button
+            key={`minus-${key}`}
+            type="button"
+            onClick={() => pickMinus(key)}
+            title={`Lower ${label}`}
+            className={`rounded-md border px-1 py-1 text-[10px] font-bold transition ${
+              minus === key
+                ? "border-primary bg-primary/15 text-primary"
+                : "border-border bg-background/40 text-muted-foreground hover:border-primary/50 hover:text-primary"
+            }`}
+          >
+            −{label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const BOOST_STATS: { key: keyof BoostAlloc; label: string }[] = [
+  { key: "atk", label: "Atk" },
+  { key: "def", label: "Def" },
+  { key: "spa", label: "SpA" },
+  { key: "spd", label: "SpD" },
+  { key: "spe", label: "Spe" },
+];
+const BOOST_MIN = -6;
+const BOOST_MAX = 6;
+
+// In-battle stat stages (Swords Dance = +2 Atk, Iron Defense = +2 Def,
+// Intimidate = -1 Atk, etc.), independent from SP/EVs and nature — this is
+// a temporary multiplier applied on top of the calculated stat, not a
+// permanent training investment. Passed straight through to @smogon/calc's
+// own `boosts` field, which already implements the real ±6 stage formula.
+function BoostPicker({
+  value,
+  onChange,
+}: {
+  value: BoostAlloc;
+  onChange: (next: BoostAlloc) => void;
+}) {
+  const anyBoosted = BOOST_STATS.some(({ key }) => value[key] !== 0);
+  function bump(key: keyof BoostAlloc, delta: number) {
+    const next = Math.max(BOOST_MIN, Math.min(BOOST_MAX, value[key] + delta));
+    onChange({ ...value, [key]: next });
+  }
+  return (
+    <div className="mt-3">
+      <div className="mb-1 flex items-baseline justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span>Stat Stages (battle boosts)</span>
+        {anyBoosted && (
+          <button
+            type="button"
+            onClick={() => onChange({ ...ZERO_BOOSTS })}
+            className="normal-case text-muted-foreground underline decoration-dotted hover:text-foreground"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-5 gap-1">
+        {BOOST_STATS.map(({ key, label }) => {
+          const val = value[key];
+          const color = STAT_COLORS[key];
+          return (
+            <div
+              key={key}
+              className="flex flex-col items-center gap-0.5 rounded-md border border-border bg-background/40 p-1"
+            >
+              <span
+                className={`text-[10px] font-semibold ${val !== 0 ? color.text : "text-muted-foreground"}`}
+              >
+                {label}
+              </span>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => bump(key, -1)}
+                  disabled={val <= BOOST_MIN}
+                  className="stat-step-btn"
+                  aria-label={`Lower ${label} stage`}
+                >
+                  −
+                </button>
+                <span
+                  className={`w-6 text-center text-[11px] font-bold tabular-nums ${
+                    val > 0 ? color.text : val < 0 ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  {val > 0 ? `+${val}` : val}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => bump(key, 1)}
+                  disabled={val >= BOOST_MAX}
+                  className="stat-step-btn"
+                  aria-label={`Raise ${label} stage`}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -775,6 +957,7 @@ function Results({
       nature: attacker.nature,
       sp: attacker.sp,
       status: attacker.status,
+      boosts: attacker.boosts,
     };
     const dCfg: SideConfig = {
       speciesName: dName,
@@ -783,6 +966,7 @@ function Results({
       nature: defender.nature,
       sp: defender.sp,
       status: defender.status,
+      boosts: defender.boosts,
     };
     return attacker.moves.map((mv) => (mv ? runCalc(aCfg, dCfg, mv, field) : null));
   }, [attacker, defender, field, aEntry, dEntry]);

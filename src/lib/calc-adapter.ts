@@ -224,6 +224,20 @@ export function natureMultiplier(natureName: string | undefined, stat: NatureSta
   return 1;
 }
 
+// Reverse lookup for a "pick which stat is boosted / which is hurt" nature
+// picker: given a +stat and a -stat (either or both may be absent), find
+// the matching nature name. Equal or fully-absent plus/minus both mean
+// neutral, and any of the five interchangeable neutral natures works
+// identically for calc purposes, so "Hardy" is used as the canonical one.
+export function natureFromPlusMinus(
+  plus: NatureStatKey | null,
+  minus: NatureStatKey | null,
+): string {
+  if (!plus || !minus || plus === minus) return "Hardy";
+  const match = NATURES.find((n) => n.plus === plus && n.minus === minus);
+  return match?.name ?? "Hardy";
+}
+
 // ---- Side config used by the sidebar ------------------------------------
 
 export type SideConfig = {

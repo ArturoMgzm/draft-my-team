@@ -7,7 +7,8 @@ import {
   nextPlayerIndex,
   rollPool,
 } from "@/lib/draft-engine";
-import { playShinyChime, isShinyMuted, setShinyMuted } from "@/lib/shiny-sound";
+import { playShinyChime } from "@/lib/shiny-sound";
+import { isSoundMuted, setSoundMuted } from "@/lib/sound-prefs";
 import { ConfigPanel } from "@/components/draft/ConfigPanel";
 import { PoolGrid } from "@/components/draft/PoolGrid";
 import { TeamsSidebar } from "@/components/draft/TeamsSidebar";
@@ -15,11 +16,7 @@ import { Lobby } from "@/components/draft/Lobby";
 import { RoomDraft } from "@/components/draft/RoomDraft";
 import { CalcSidebar } from "@/components/calc/CalcSidebar";
 import { useRoom } from "@/hooks/useRoom";
-import {
-  applyRoomAction,
-  generateRoomCode,
-  getDeviceId,
-} from "@/lib/room-client";
+import { applyRoomAction, generateRoomCode, getDeviceId } from "@/lib/room-client";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -105,9 +102,9 @@ function Page() {
 
       <footer className="border-t border-border px-6 py-5 text-center text-[11px] leading-relaxed text-muted-foreground">
         <p>
-          Pokémon and Pokémon character names are trademarks of Nintendo, Game
-          Freak, and The Pokémon Company. This is an unofficial fan project,
-          not affiliated with or endorsed by them. Pokémon data and sprites via{" "}
+          Pokémon and Pokémon character names are trademarks of Nintendo, Game Freak, and The
+          Pokémon Company. This is an unofficial fan project, not affiliated with or endorsed by
+          them. Pokémon data and sprites via{" "}
           <a
             href="https://pokeapi.co"
             target="_blank"
@@ -131,7 +128,7 @@ function Page() {
 function MuteToggle() {
   const [muted, setMuted] = useState(false);
   useEffect(() => {
-    setMuted(isShinyMuted());
+    setMuted(isSoundMuted());
   }, []);
   return (
     <button
@@ -139,10 +136,10 @@ function MuteToggle() {
       onClick={() => {
         const next = !muted;
         setMuted(next);
-        setShinyMuted(next);
+        setSoundMuted(next);
       }}
-      title={muted ? "Shiny chime muted" : "Shiny chime on"}
-      aria-label={muted ? "Unmute shiny chime" : "Mute shiny chime"}
+      title={muted ? "Sound muted" : "Sound on"}
+      aria-label={muted ? "Unmute sound" : "Mute sound"}
       className="rounded-md border border-border bg-card px-2 py-1.5 text-xs hover:bg-secondary"
     >
       {muted ? "🔇" : "🔊"}
@@ -150,13 +147,7 @@ function MuteToggle() {
   );
 }
 
-function MainMenu({
-  onSolo,
-  onRoom,
-}: {
-  onSolo: () => void;
-  onRoom: (code: string) => void;
-}) {
+function MainMenu({ onSolo, onRoom }: { onSolo: () => void; onRoom: (code: string) => void }) {
   const [joining, setJoining] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinName, setJoinName] = useState("");
@@ -217,9 +208,7 @@ function MainMenu({
             className="rounded-xl border border-border bg-input p-4 text-left transition hover:border-accent hover:bg-accent/5"
           >
             <div className="text-sm font-bold">Solo / Local</div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              One screen, take turns
-            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">One screen, take turns</div>
           </button>
           <button
             onClick={hostRoom}
@@ -236,9 +225,7 @@ function MainMenu({
             className="rounded-xl border border-border bg-input p-4 text-left transition hover:border-accent hover:bg-accent/5"
           >
             <div className="text-sm font-bold">Join Room</div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              Enter a code from the host
-            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">Enter a code from the host</div>
           </button>
         </div>
         {joining && (
@@ -246,7 +233,12 @@ function MainMenu({
             <input
               value={joinCode}
               onChange={(e) =>
-                setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))
+                setJoinCode(
+                  e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, "")
+                    .slice(0, 5),
+                )
               }
               placeholder="CODE"
               className="w-full rounded-md border border-border bg-input px-3 py-2 text-center font-mono text-lg tracking-[0.4em]"
@@ -398,10 +390,7 @@ function SoloDraft({ onExit }: { onExit: () => void }) {
   if (!pool) {
     return (
       <div className="mx-auto max-w-2xl space-y-3">
-        <button
-          onClick={onExit}
-          className="text-xs text-muted-foreground hover:text-accent"
-        >
+        <button onClick={onExit} className="text-xs text-muted-foreground hover:text-accent">
           ← Back to menu
         </button>
         <ConfigPanel cfg={cfg} setCfg={setCfg} onStart={startDraft} />
