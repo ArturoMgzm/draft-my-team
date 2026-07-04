@@ -307,7 +307,7 @@ function SideCard({
             label="Ability"
             value={state.ability}
             onChange={(v) => setState((s) => ({ ...s, ability: v }))}
-            options={["", ...(data?.abilities ?? [])]}
+            options={["", ...sortedByDisplay(data?.abilities ?? [], cap)]}
             format={(v) => (v ? cap(v) : "Default")}
           />
           <ItemPicker value={state.item} onChange={(v) => setState((s) => ({ ...s, item: v }))} />
@@ -484,7 +484,7 @@ function SideCard({
                 className="rounded-md border border-border bg-input px-2 py-1 text-[11px]"
               >
                 <option value="">— empty —</option>
-                {(data?.moves ?? []).map((mSlug) => (
+                {sortedByDisplay(data?.moves ?? [], slugToMoveName).map((mSlug) => (
                   <option key={mSlug} value={mSlug}>
                     {slugToMoveName(mSlug)}
                   </option>
@@ -704,6 +704,14 @@ function statBaseFor(data: PokemonData, key: keyof SpAlloc): number {
 
 function cap(s: string): string {
   return s.replace(/(^|-)([a-z])/g, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+// Sorts a list of slugs alphabetically by their *displayed* name (not the
+// raw slug) so dropdowns like Ability/Move read in the order the person
+// actually sees, regardless of any slug->name overrides (e.g. "u-turn" ->
+// "U-turn") that could otherwise shift things out of slug order.
+function sortedByDisplay(slugs: string[], toDisplay: (slug: string) => string): string[] {
+  return slugs.slice().sort((a, b) => toDisplay(a).localeCompare(toDisplay(b)));
 }
 
 // -------------------- Labeled select (with optional grouping) --------------------

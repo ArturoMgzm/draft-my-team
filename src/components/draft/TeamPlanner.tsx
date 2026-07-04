@@ -24,6 +24,12 @@ function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Sorts a list of slugs alphabetically by their *displayed* name (not the
+// raw slug), so the move dropdown reads in the order actually shown.
+function sortedByDisplay(slugs: string[], toDisplay: (slug: string) => string): string[] {
+  return slugs.slice().sort((a, b) => toDisplay(a).localeCompare(toDisplay(b)));
+}
+
 // Fetches PokemonData for whichever form of each entry is currently active
 // per the shared formIndex map, so toggling a card's Mega badge updates the
 // analysis even while the planner is open.
@@ -210,7 +216,7 @@ function PlannerMonCard({
             className="rounded-md border border-border bg-input px-1.5 py-1 text-[10px]"
           >
             <option value="">— empty —</option>
-            {(info.data?.moves ?? []).map((mSlug) => (
+            {sortedByDisplay(info.data?.moves ?? [], slugToMoveName).map((mSlug) => (
               <option key={mSlug} value={mSlug}>
                 {slugToMoveName(mSlug)}
               </option>
