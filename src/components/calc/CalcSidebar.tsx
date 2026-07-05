@@ -115,6 +115,7 @@ export function CalcSidebar({
   open: boolean;
   onClose: () => void;
 }) {
+  const [mode, setMode] = useState<"calc" | "speed">("calc");
   const [atk, setAtk] = useState<SideDraft>(EMPTY_SIDE);
   const [def, setDef] = useState<SideDraft>(EMPTY_SIDE);
   const [field, setField] = useState<FieldConfig>(DEFAULT_FIELD);
@@ -136,22 +137,26 @@ export function CalcSidebar({
       >
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
           <div>
-            <h2 className="text-sm font-bold tracking-tight">Damage Calculator</h2>
+            <h2 className="text-sm font-bold tracking-tight">
+              {mode === "calc" ? "Damage Calculator" : "Speed Tiers"}
+            </h2>
             <p className="text-[10px] text-muted-foreground">
               Champions Reg M-B · Level 50 · Doubles · No Tera (not yet playable)
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setAtk(def);
-                setDef(atk);
-              }}
-              className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium hover:border-accent hover:text-accent"
-              title="Swap attacker and defender"
-            >
-              <span aria-hidden>⇄</span> Swap
-            </button>
+            {mode === "calc" && (
+              <button
+                onClick={() => {
+                  setAtk(def);
+                  setDef(atk);
+                }}
+                className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium hover:border-accent hover:text-accent"
+                title="Swap attacker and defender"
+              >
+                <span aria-hidden>⇄</span> Swap
+              </button>
+            )}
             <button
               onClick={onClose}
               className="rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-secondary"
@@ -161,19 +166,212 @@ export function CalcSidebar({
           </div>
         </header>
 
-        <div className="space-y-4 p-4">
-          <SideCard title="Attacker" side="atk" pool={pool} state={atk} setState={setAtk} />
-          <SideCard title="Defender" side="def" pool={pool} state={def} setState={setDef} />
-          <FieldPanel field={field} setField={setField} />
-          <Results attacker={atk} defender={def} field={field} pool={pool} />
-          <p className="text-[10px] leading-relaxed text-muted-foreground">
-            Stats use Champions SP (1 SP = +1 to that stat, verified against @smogon/calc). Item and
-            ability effects, weather, terrain, screens, spread reduction, and crits are evaluated by
-            Smogon's calc engine.
-          </p>
+        <div className="flex gap-1 border-b border-border bg-card/50 px-4 py-2">
+          <button
+            type="button"
+            onClick={() => setMode("calc")}
+            className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+              mode === "calc"
+                ? "border-accent bg-accent/15 text-accent"
+                : "border-border bg-background/40 text-muted-foreground hover:border-accent/50 hover:text-accent"
+            }`}
+          >
+            🧮 Damage Calc
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("speed")}
+            className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+              mode === "speed"
+                ? "border-accent bg-accent/15 text-accent"
+                : "border-border bg-background/40 text-muted-foreground hover:border-accent/50 hover:text-accent"
+            }`}
+          >
+            ⚡ Speed Tiers
+          </button>
         </div>
+
+        {mode === "calc" ? (
+          <div className="space-y-4 p-4">
+            <SideCard title="Attacker" side="atk" pool={pool} state={atk} setState={setAtk} />
+            <SideCard title="Defender" side="def" pool={pool} state={def} setState={setDef} />
+            <FieldPanel field={field} setField={setField} />
+            <Results attacker={atk} defender={def} field={field} pool={pool} />
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              Stats use Champions SP (1 SP = +1 to that stat, verified against @smogon/calc). Item
+              and ability effects, weather, terrain, screens, spread reduction, and crits are
+              evaluated by Smogon's calc engine.
+            </p>
+          </div>
+        ) : (
+          <SpeedTiersView pool={pool} />
+        )}
       </aside>
     </>
+  );
+}
+
+// -------------------- Speed Tiers --------------------
+
+type SpeedRow = {
+  key: string;
+  name: string;
+  slug: string;
+  data: PokemonData | null;
+};
+
+// Every form of every pool entry gets its own row — a Mega and its base
+// form are different entries, and (in "unified"/non-split-forms pools)
+// each bundled alt form is its own entry too, exactly matching how
+// getFormOptions already drives the form-toggle badges elsewhere.
+function useAllFormRows(pool: DraftEntry[]): SpeedRow[] {
+  const bases = useMemo(() => {
+    const list: { key: string; name: string; slug: string }[] = [];
+    for (const entry of pool) {
+      for (const opt of getFormOptions(entry)) {
+        list.push({ key: `${entry.id}:${opt.slug}`, name: opt.name, slug: opt.slug });
+      }
+    }
+    return list;
+  }, [pool]);
+
+  const [dataMap, setDataMap] = useState<Map<string, PokemonData | null>>(() => new Map());
+  const slugsKey = bases
+    .map((b) => b.slug)
+    .sort()
+    .join(",");
+
+  useEffect(() => {
+    let alive = true;
+    const uniqueSlugs = Array.from(new Set(bases.map((b) => b.slug)));
+    Promise.all(uniqueSlugs.map(async (s) => [s, await fetchPokemon(s)] as const)).then((pairs) => {
+      if (!alive) return;
+      setDataMap(new Map(pairs));
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slugsKey]);
+
+  return bases.map((b) => ({ ...b, data: dataMap.get(b.slug) ?? null }));
+}
+
+type SpeedCols = {
+  base: number;
+  max: number;
+  min: number;
+  neutralMax: number;
+  neutralMin: number;
+  scarf: number;
+  ironBall: number;
+};
+
+function speedColumns(base: number): SpeedCols {
+  const max = computeStatAtL50(base, SP_MAX_PER_STAT, false, 1.1);
+  const min = computeStatAtL50(base, 0, false, 0.9);
+  const neutralMax = computeStatAtL50(base, SP_MAX_PER_STAT, false, 1);
+  const neutralMin = computeStatAtL50(base, 0, false, 1);
+  return {
+    base,
+    max,
+    min,
+    neutralMax,
+    neutralMin,
+    scarf: Math.floor(max * 1.5),
+    ironBall: Math.floor(min * 0.5),
+  };
+}
+
+type SortKey = keyof SpeedCols;
+
+const SPEED_COLUMNS: { key: SortKey; label: string; title: string }[] = [
+  { key: "base", label: "Base", title: "Base Speed stat" },
+  { key: "max", label: "Max", title: "+Speed nature, max investment (32 SP)" },
+  { key: "min", label: "Min", title: "−Speed nature, no investment" },
+  { key: "neutralMax", label: "Neu. Max", title: "Neutral nature, max investment (32 SP)" },
+  { key: "neutralMin", label: "Neu. Min", title: "Neutral nature, no investment" },
+  { key: "scarf", label: "+Scarf", title: "Max speed + Choice Scarf (×1.5)" },
+  { key: "ironBall", label: "+Iron Ball", title: "Min speed + Iron Ball (×0.5)" },
+];
+
+function SpeedTiersView({ pool }: { pool: DraftEntry[] }) {
+  const rows = useAllFormRows(pool);
+  const [sortKey, setSortKey] = useState<SortKey>("max");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
+
+  const computed = rows.map((r) => ({
+    ...r,
+    cols: r.data ? speedColumns(r.data.stats.speed) : null,
+  }));
+
+  const sorted = computed.slice().sort((a, b) => {
+    const av = a.cols?.[sortKey] ?? -1;
+    const bv = b.cols?.[sortKey] ?? -1;
+    return sortDir === "desc" ? bv - av : av - bv;
+  });
+
+  return (
+    <div className="p-4">
+      <p className="mb-3 text-[11px] text-muted-foreground">
+        Every drafted Pokémon — base forms, Megas, and alt forms each get their own row. Click a
+        column to sort by it.
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full border-collapse text-[11px]">
+          <thead className="sticky top-0 bg-card">
+            <tr>
+              <th className="whitespace-nowrap border-b border-border px-2 py-1.5 text-left font-semibold">
+                Pokémon
+              </th>
+              {SPEED_COLUMNS.map((c) => (
+                <th
+                  key={c.key}
+                  title={c.title}
+                  onClick={() => toggleSort(c.key)}
+                  className={`cursor-pointer select-none whitespace-nowrap border-b border-border px-1.5 py-1.5 text-right font-semibold hover:text-accent ${
+                    sortKey === c.key ? "text-accent" : ""
+                  }`}
+                >
+                  {c.label}
+                  {sortKey === c.key && (sortDir === "desc" ? " ▾" : " ▴")}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r) => (
+              <tr key={r.key} className="odd:bg-background/40">
+                <td className="whitespace-nowrap px-2 py-1">
+                  <div className="flex items-center gap-1.5">
+                    {r.data?.sprite ? (
+                      <img src={r.data.sprite} alt="" className="h-6 w-6 object-contain" />
+                    ) : (
+                      <span className="h-6 w-6" />
+                    )}
+                    <span className="max-w-[100px] truncate">{r.name}</span>
+                  </div>
+                </td>
+                {SPEED_COLUMNS.map((c) => (
+                  <td key={c.key} className="whitespace-nowrap px-1.5 py-1 text-right tabular-nums">
+                    {r.cols ? r.cols[c.key] : "…"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
