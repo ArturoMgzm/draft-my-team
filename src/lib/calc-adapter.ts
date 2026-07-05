@@ -170,6 +170,21 @@ export function slugToMoveName(slug: string): string {
     .join(" ");
 }
 
+// Abilities were being passed to @smogon/calc as raw PokéAPI slugs (e.g.
+// "water-absorb"), which the engine silently fails to recognize — it
+// stores whatever string it's given without validating it, so there's no
+// error, but the ability's actual effect (Water Absorb's immunity, Guts'
+// boost, etc.) just never triggers. Verified directly: constructing a
+// Pokemon with ability "water-absorb" and calculating a Water-type hit
+// against it still deals full damage, while ability "Water Absorb" (the
+// Title Case, space-separated Showdown convention) correctly zeroes it.
+export function slugToAbilityName(slug: string): string {
+  return slug
+    .split("-")
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
+}
+
 // ---- Natures (Champions calls this "Stat Alignment") --------------------
 
 export type NatureStatKey = "atk" | "def" | "spa" | "spd" | "spe";
@@ -289,7 +304,7 @@ function buildPokemon(cfg: SideConfig): Pokemon {
     nature: cfg.nature || "Hardy",
     ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 },
     evs: evsFromSp(cfg.sp),
-    ability: cfg.ability,
+    ability: cfg.ability ? slugToAbilityName(cfg.ability) : undefined,
     item: cfg.item,
     status: (cfg.status ?? "") as never,
     boosts: cfg.boosts as never,

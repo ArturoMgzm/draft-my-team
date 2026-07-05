@@ -359,6 +359,15 @@ function SideCard({
               const mult = key === "hp" ? 1 : natureMultiplier(state.nature, key);
               const final =
                 base !== null ? computeStatAtL50(base, state.sp[key], key === "hp", mult) : null;
+              // The live "base -> final" readout is our own from-scratch
+              // formula (EVs/nature/level only) — it has no idea about held
+              // items, unlike the actual damage calc below, which already
+              // gets Choice Scarf's speed boost correctly for free from
+              // @smogon/calc's own item effects. Applying it here too is
+              // purely a display enhancement so the preview doesn't look
+              // like it's ignoring an item that's clearly changing things.
+              const itemSpeedMult = key === "spe" && state.item === "Choice Scarf" ? 1.5 : 1;
+              const displayFinal = final !== null ? Math.floor(final * itemSpeedMult) : null;
               const value = state.sp[key];
               // The highest value this stat could actually reach right now,
               // given what the other five stats have already spent from the
@@ -405,7 +414,17 @@ function SideCard({
                       {base !== null ? (
                         <>
                           {base} <span aria-hidden>→</span>{" "}
-                          <span className={value > 0 ? color.text : ""}>{final}</span>
+                          <span className={value > 0 || itemSpeedMult !== 1 ? color.text : ""}>
+                            {displayFinal}
+                          </span>
+                          {itemSpeedMult !== 1 && (
+                            <span
+                              className="ml-0.5 text-accent"
+                              title="Boosted by Choice Scarf (×1.5)"
+                            >
+                              🧣
+                            </span>
+                          )}
                         </>
                       ) : (
                         "—"
