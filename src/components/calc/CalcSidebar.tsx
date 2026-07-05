@@ -458,15 +458,18 @@ function SideCard({
             className="w-full min-w-0 rounded-md border border-border bg-input px-2 py-1.5 text-sm"
           >
             <option value="">— Select Pokémon —</option>
-            {pool.map((p) => {
-              const opts = getFormOptions(p);
-              return (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {opts.length > 1 ? ` (${opts.length} forms)` : ""}
-                </option>
-              );
-            })}
+            {pool
+              .slice()
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((p) => {
+                const opts = getFormOptions(p);
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {opts.length > 1 ? ` (${opts.length} forms)` : ""}
+                  </option>
+                );
+              })}
           </select>
 
           {/* Form / Mega toggle — the whole point of this section: every
