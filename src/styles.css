@@ -352,7 +352,25 @@
   animation: auction-roulette-land 0.4s cubic-bezier(0.22, 1.4, 0.36, 1) both;
 }
 
+/* Spinning conic halo behind the roulette mon centerpiece. */
+@keyframes auction-halo-spin {
+  to { transform: rotate(360deg); }
+}
+.auction-roulette-halo {
+  background: conic-gradient(
+    from 0deg,
+    oklch(0.75 0.12 200 / 0.35),
+    transparent 25%,
+    oklch(0.75 0.12 200 / 0.35) 50%,
+    transparent 75%,
+    oklch(0.75 0.12 200 / 0.35)
+  );
+  filter: blur(10px);
+  animation: auction-halo-spin 3s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .auction-reveal, .auction-roulette-final { animation: none; }
   .auction-spotlight { animation: none; box-shadow: 0 0 18px 2px oklch(0.75 0.12 200 / 0.22); }
+  .auction-roulette-halo { animation: none; }
 }

@@ -26,6 +26,20 @@ import {
 // the first no-ops — so duplicate calls are harmless by design.
 // ---------------------------------------------------------------------------
 
+// Up to 8 distinct player colors, all pulled from existing design tokens
+// (no new colors introduced). Keyed by seat index in player_order so each
+// player keeps a stable identity color across the whole auction UI.
+const PLAYER_COLORS = [
+  "var(--primary)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--accent)",
+  "var(--chart-1)",
+  "var(--ring)",
+];
+
 function usePokemonData(slug: string | undefined): PokemonData | null {
   const [data, setData] = useState<PokemonData | null>(null);
   useEffect(() => {
@@ -79,6 +93,11 @@ export function AuctionDraft({
   const byEntryId = useMemo(() => new Map((room.pool ?? []).map((e) => [e.id, e])), [room.pool]);
   const nameOf = (pid: string | null | undefined) =>
     players.find((p) => p.player_id === pid)?.username?.trim() || "Player";
+  const orderedIds = useMemo(() => (room.player_order ?? []).filter(Boolean), [room.player_order]);
+  const colorOf = (pid: string | null | undefined) => {
+    const idx = pid ? orderedIds.indexOf(pid) : -1;
+    return idx >= 0 ? PLAYER_COLORS[idx % PLAYER_COLORS.length] : "var(--muted-foreground)";
+  };
 
   const current = currentId ? (byEntryId.get(currentId) ?? null) : null;
   const secondsLeft = useCountdown(room.auction_ends_at);
@@ -96,12 +115,6 @@ export function AuctionDraft({
   const myCount = teamCounts.get(selfId) ?? 0;
   const myMoney = money[selfId] ?? 0;
   const allowOverdraft = !!room.config.allowOverdraft;
-  const canBid =
-    !!current &&
-    !pendingSwap &&
-    secondsLeft > 0 &&
-    (myCount < 6 || allowOverdraft) &&
-    myMoney > bid;
 
   const [err, setErr] = useState<string | null>(null);
   const [customBid, setCustomBid] = useState("");
@@ -111,6 +124,29 @@ export function AuctionDraft({
     startAuctionMusic();
     return () => stopAuctionMusic();
   }, []);
+
+  // ---- Bid history (reconstructed client-side) ----
+  // The server only stores the *current* top bid, not the sequence — so
+  // each client accumulates its own history by watching bid/bidder change
+  // via realtime, and wipes it whenever a new mon hits the block. (A burst
+  // of near-simultaneous bids could occasionally coalesce into one realtime
+  // reload and skip an intermediate entry locally; harmless for a display.)
+  const [history, setHistory] = useState<{ pid: string; amount: number; key: number }[]>([]);
+  const histKeyRef = useRef(0);
+  const prevBidForHist = useRef(0);
+  useEffect(() => {
+    // Wipe when the mon changes.
+    setHistory([]);
+    prevBidForHist.current = 0;
+  }, [currentId]);
+  useEffect(() => {
+    if (bid > 0 && bidder && bid !== prevBidForHist.current) {
+      histKeyRef.current += 1;
+      const key = histKeyRef.current;
+      setHistory((h) => [{ pid: bidder, amount: bid, key }, ...h].slice(0, 30));
+    }
+    prevBidForHist.current = bid;
+  }, [bid, bidder]);
 
   // ---- Sounds & animations driven by state transitions ----
   const prevBid = useRef(bid);
@@ -146,6 +182,13 @@ export function AuctionDraft({
     winner: string;
     display: string;
   } | null>(null);
+  const canBid =
+    !!current &&
+    !pendingSwap &&
+    !roulette &&
+    secondsLeft > 0 &&
+    (myCount < 6 || allowOverdraft) &&
+    myMoney > bid;
   const rouletteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevSeq = useRef(seq);
   useEffect(() => {
@@ -260,7 +303,16 @@ export function AuctionDraft({
                     ${noBidsYet ? 1 : bid}
                   </div>
                   <div className="text-[11px] text-muted-foreground">
-                    {noBidsYet ? "No bids yet — goes unsold at 0:00" : `Held by ${nameOf(bidder)}`}
+                    {noBidsYet ? (
+                      "No bids yet — goes unsold at 0:00"
+                    ) : (
+                      <>
+                        Held by{" "}
+                        <span className="font-semibold" style={{ color: colorOf(bidder) }}>
+                          {nameOf(bidder)}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -337,20 +389,45 @@ export function AuctionDraft({
             </div>
           )}
 
-          {/* Roulette overlay */}
+          {/* Roulette overlay — the mon is the centerpiece */}
           {roulette && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/90 backdrop-blur-sm">
-              <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-background/92 backdrop-blur-sm">
+              <div className="text-xs font-bold uppercase tracking-[0.3em] text-muted-foreground">
                 No bids — fate decides!
               </div>
-              <HoverSprite entry={roulette.entry} className="h-24 w-24 object-contain" />
-              <div className="text-sm text-muted-foreground">{roulette.entry.name} goes to…</div>
+              <div className="relative flex items-center justify-center">
+                <div
+                  className="auction-roulette-halo absolute h-44 w-44 rounded-full"
+                  aria-hidden
+                />
+                <div
+                  className={`relative flex h-40 w-40 items-center justify-center rounded-2xl border-2 border-accent/40 bg-background/70 p-2 ${
+                    roulette.entry.shiny ? "shiny-frame !border-transparent" : ""
+                  }`}
+                >
+                  <HoverSprite
+                    entry={roulette.entry}
+                    className="h-full w-full object-contain drop-shadow-[0_6px_16px_rgba(0,0,0,0.55)]"
+                  />
+                </div>
+              </div>
+              <div className="text-lg font-black">{roulette.entry.name}</div>
+              <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                goes to…
+              </div>
               <div
-                className={`rounded-xl border-2 px-6 py-2 text-2xl font-black ${
+                key={roulette.display}
+                className={`rounded-xl border-2 px-8 py-2.5 text-3xl font-black ${
                   roulette.display === nameOf(roulette.winner)
                     ? "auction-roulette-final border-accent text-accent"
                     : "border-border text-foreground"
                 }`}
+                style={{
+                  color:
+                    roulette.display === nameOf(roulette.winner)
+                      ? colorOf(roulette.winner)
+                      : undefined,
+                }}
               >
                 {roulette.display}
               </div>
@@ -377,6 +454,11 @@ export function AuctionDraft({
                       isTop ? "border-accent bg-accent/10" : "border-border bg-background/40"
                     } ${isMe ? "ring-1 ring-accent/40" : ""}`}
                   >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: colorOf(pid) }}
+                      aria-hidden
+                    />
                     <span className="truncate">
                       {nameOf(pid)}
                       {isMe && <span className="ml-1 text-[10px] text-muted-foreground">you</span>}
@@ -392,6 +474,38 @@ export function AuctionDraft({
                 );
               })}
             </ul>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-3">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Bid history
+            </div>
+            {history.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                No bids yet on this mon. Newest bids show at the top.
+              </p>
+            ) : (
+              <ul className="max-h-40 space-y-1 overflow-y-auto">
+                {history.map((h, i) => (
+                  <li
+                    key={h.key}
+                    className={`flex items-center gap-2 text-[12px] ${
+                      i === 0 ? "font-bold" : "text-muted-foreground"
+                    }`}
+                  >
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: colorOf(h.pid) }}
+                      aria-hidden
+                    />
+                    <span className="truncate">{nameOf(h.pid)}</span>
+                    <span className="ml-auto whitespace-nowrap tabular-nums text-accent">
+                      ${h.amount}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
 
           {last && !roulette && (
@@ -505,6 +619,8 @@ function SpotlightMon({ entry }: { entry: DraftEntry }) {
   useEffect(() => setFormIdx(0), [entry.id]);
   const active = forms[Math.min(formIdx, forms.length - 1)] ?? forms[0];
   const data = usePokemonData(active?.slug);
+  const [showMoves, setShowMoves] = useState(false);
+  useEffect(() => setShowMoves(false), [entry.id]);
 
   const statRows: { label: string; value: number | undefined }[] = [
     { label: "HP", value: data?.stats.hp },
@@ -590,13 +706,31 @@ function SpotlightMon({ entry }: { entry: DraftEntry }) {
                 .join(" · ") ?? "…"}
             </span>
           </span>
-          <span>
-            {data ? `${data.moves.length} moves` : "…"}
-            {data && data.moves.length > 0 && (
-              <span title={data.moves.slice(0, 40).map(slugToMoveName).join(", ")}> (hover)</span>
-            )}
-          </span>
+          {data && data.moves.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowMoves((v) => !v)}
+              className="font-semibold text-accent hover:underline"
+            >
+              {showMoves ? "Hide" : "Show"} {data.moves.length} moves
+            </button>
+          )}
         </div>
+        {showMoves && data && (
+          <div className="mt-2 flex max-h-24 flex-wrap gap-1 overflow-y-auto rounded-md border border-border bg-background/40 p-1.5">
+            {data.moves
+              .slice()
+              .sort((a, b) => slugToMoveName(a).localeCompare(slugToMoveName(b)))
+              .map((m) => (
+                <span
+                  key={m}
+                  className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-foreground"
+                >
+                  {slugToMoveName(m)}
+                </span>
+              ))}
+          </div>
+        )}
       </div>
     </div>
   );
