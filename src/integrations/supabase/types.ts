@@ -45,6 +45,8 @@ export type Database = {
       }
       rooms: {
         Row: {
+          auction: Json
+          auction_ends_at: string | null
           code: string
           config: Json
           created_at: string
@@ -59,6 +61,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auction?: Json
+          auction_ends_at?: string | null
           code: string
           config?: Json
           created_at?: string
@@ -73,6 +77,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auction?: Json
+          auction_ends_at?: string | null
           code?: string
           config?: Json
           created_at?: string
