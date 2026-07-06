@@ -14,6 +14,7 @@ import { PoolGrid } from "@/components/draft/PoolGrid";
 import { TeamsSidebar } from "@/components/draft/TeamsSidebar";
 import { Lobby } from "@/components/draft/Lobby";
 import { RoomDraft } from "@/components/draft/RoomDraft";
+import { AuctionDraft } from "@/components/draft/AuctionDraft";
 import { CalcSidebar } from "@/components/calc/CalcSidebar";
 import { useRoom } from "@/hooks/useRoom";
 import { applyRoomAction, generateRoomCode, getDeviceId } from "@/lib/room-client";
@@ -293,6 +294,9 @@ function RoomMode({ code, onExit }: { code: string; onExit: () => void }) {
 
   if (room.status === "lobby") {
     return <Lobby room={room} players={players} selfId={selfId} onLeave={onExit} />;
+  }
+  if (room.status === "drafting" && (room.config.draftMode ?? "standard") === "auction") {
+    return <AuctionDraft room={room} players={players} selfId={selfId} />;
   }
   return <RoomDraft room={room} players={players} selfId={selfId} />;
 }

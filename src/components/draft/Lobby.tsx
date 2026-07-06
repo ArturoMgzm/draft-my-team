@@ -1,16 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  applyRoomAction,
-  type RoomPlayerRow,
-  type RoomRow,
-} from "@/lib/room-client";
+import { applyRoomAction, type RoomPlayerRow, type RoomRow } from "@/lib/room-client";
 import { ConfigPanel } from "./ConfigPanel";
-import {
-  type Config,
-  computeOverCapacity,
-  rollPool,
-  shuffle,
-} from "@/lib/draft-engine";
+import { type Config, computeOverCapacity, rollPool, shuffle } from "@/lib/draft-engine";
 import { playShinyChime } from "@/lib/shiny-sound";
 
 export function Lobby({
@@ -130,13 +121,9 @@ export function Lobby({
     <div className="grid gap-6 md:grid-cols-[1fr_360px]">
       <div className="space-y-4">
         <div className="rounded-2xl border border-accent/40 bg-accent/5 p-5">
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">
-            Room code
-          </div>
+          <div className="text-xs uppercase tracking-widest text-muted-foreground">Room code</div>
           <div className="mt-1 flex items-center gap-3">
-            <code className="text-3xl font-black tracking-[0.3em] text-accent">
-              {room.code}
-            </code>
+            <code className="text-3xl font-black tracking-[0.3em] text-accent">{room.code}</code>
             <button
               onClick={() => navigator.clipboard?.writeText(room.code)}
               className="rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-secondary"
@@ -157,6 +144,7 @@ export function Lobby({
           onStart={begin}
           startLabel={busy === "begin" ? "Rolling…" : "Roll Pool & Start Draft"}
           startDisabledReason={startDisabled}
+          multiplayer
         />
 
         {isHost && (
@@ -196,10 +184,7 @@ export function Lobby({
               Players ({players.length})
             </div>
             {isHost && players.length > 1 && (
-              <button
-                onClick={randomizeOrder}
-                className="text-[11px] text-accent hover:underline"
-              >
+              <button onClick={randomizeOrder} className="text-[11px] text-accent hover:underline">
                 Randomize order
               </button>
             )}
@@ -220,12 +205,8 @@ export function Lobby({
                   </span>
                   <span className="truncate">
                     {p.username?.trim() || "Player"}
-                    {isPlayerHost && (
-                      <span className="ml-1 text-[10px] text-accent">HOST</span>
-                    )}
-                    {isMe && (
-                      <span className="ml-1 text-[10px] text-muted-foreground">you</span>
-                    )}
+                    {isPlayerHost && <span className="ml-1 text-[10px] text-accent">HOST</span>}
+                    {isMe && <span className="ml-1 text-[10px] text-muted-foreground">you</span>}
                   </span>
                   {isHost && (
                     <div className="ml-auto flex items-center gap-1">

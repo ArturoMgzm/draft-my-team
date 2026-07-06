@@ -22,6 +22,31 @@ export function generateRoomCode(): string {
   return s;
 }
 
+export type AuctionState = {
+  /** Entry ids still waiting to be auctioned, in order. */
+  queue?: string[];
+  /** Entry id currently on the block, or null between auctions. */
+  current?: string | null;
+  /** Highest bid so far; 0 = no bids yet. */
+  bid?: number;
+  /** Player holding the highest bid. */
+  bidder?: string | null;
+  /** Remaining budget per player id. */
+  money?: Record<string, number>;
+  /** Set when an overdraft win is waiting for the winner to release a mon. */
+  pending_swap?: { player: string; won: string } | null;
+  /** How the previous mon left the block — drives client animations. */
+  last?: {
+    entry: string;
+    player: string | null;
+    price: number;
+    random: boolean;
+    skipped: boolean;
+  } | null;
+  /** Bumps on every resolution so clients can detect state transitions. */
+  seq?: number;
+};
+
 export type RoomRow = {
   code: string;
   host_id: string;
@@ -39,6 +64,10 @@ export type RoomRow = {
   /** Original length of the current timer, for a progress bar. Null when
    * no timer is running. */
   timer_duration_seconds: number | null;
+  /** Auction-mode state (empty object outside auction mode). */
+  auction: AuctionState;
+  /** Deadline of the auction currently on the block, or null. */
+  auction_ends_at: string | null;
 };
 
 export type RoomPlayerRow = {
@@ -61,6 +90,9 @@ export type RoomAction =
   | { type: "redraft"; pool: DraftEntry[] }
   | { type: "cancel" }
   | { type: "set_timer"; seconds: number | null }
+  | { type: "bid"; amount: number }
+  | { type: "resolve_auction" }
+  | { type: "swap_out"; entryId: string }
   | { type: "pick"; entryId: string; forPlayer?: string };
 
 export async function applyRoomAction(code: string, playerId: string, action: RoomAction) {

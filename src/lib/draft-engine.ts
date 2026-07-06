@@ -17,6 +17,8 @@ export type FormOption = { slug: string; name: string };
 
 export type PickOrder = "sequential" | "snake";
 export type MegaMode = "exact" | "atleast";
+export type DraftMode = "standard" | "auction";
+export type RevealMode = "auction" | "roll";
 
 export type Config = {
   players: number;
@@ -25,6 +27,19 @@ export type Config = {
   megaMode: MegaMode;
   pickOrder: PickOrder;
   splitForms: boolean;
+  /** Standard turn-based draft vs money-based auction (multiplayer only). */
+  draftMode?: DraftMode;
+  /** Auction mode: per-Pokémon auction clock, started by the first bid.
+   * (Every mon also opens with a fixed 10s no-bid window first.) */
+  auctionTimerSeconds?: number;
+  /** Auction mode: "auction" reveals each mon as it comes up for bidding;
+   * "roll" reveals the whole pool up front (still auctioned one at a time). */
+  revealMode?: RevealMode;
+  /** Auction mode: players with a full team may still bid; winning forces
+   * a swap, with the released mon sent to the back of the queue. */
+  allowOverdraft?: boolean;
+  /** Auction mode: each player's starting money. */
+  startingBudget?: number;
 };
 
 export const DEFAULT_CONFIG: Config = {
@@ -34,6 +49,11 @@ export const DEFAULT_CONFIG: Config = {
   megaMode: "exact",
   pickOrder: "snake",
   splitForms: true,
+  draftMode: "standard",
+  auctionTimerSeconds: 30,
+  revealMode: "auction",
+  allowOverdraft: false,
+  startingBudget: 100,
 };
 
 const MEGA_FORM_OVERRIDES: Record<string, string> = {

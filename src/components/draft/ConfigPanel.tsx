@@ -1,7 +1,9 @@
 import {
   type Config,
+  type DraftMode,
   type MegaMode,
   type PickOrder,
+  type RevealMode,
   DEFAULT_CONFIG,
   computeMegaMax,
   computeOverCapacity,
@@ -18,6 +20,7 @@ export function ConfigPanel({
   readonly = false,
   hideStart = false,
   startDisabledReason,
+  multiplayer = false,
 }: {
   cfg: Config;
   setCfg: (updater: (c: Config) => Config) => void;
@@ -26,10 +29,14 @@ export function ConfigPanel({
   readonly?: boolean;
   hideStart?: boolean;
   startDisabledReason?: string | null;
+  /** Auction mode is only meaningful with multiple live players, so its
+   * settings only render in multiplayer lobbies. */
+  multiplayer?: boolean;
 }) {
   const totalNeeded = cfg.players * 6 + cfg.extras;
   const megaMax = computeMegaMax(cfg.splitForms, totalNeeded);
   const overCapacity = computeOverCapacity(cfg);
+  const isAuction = multiplayer && (cfg.draftMode ?? "standard") === "auction";
 
   useEffect(() => {
     if (!readonly && cfg.megas > megaMax) setCfg((c) => ({ ...c, megas: megaMax }));
@@ -78,17 +85,90 @@ export function ConfigPanel({
           ]}
           onChange={(v) => setCfg((c) => ({ ...c, megaMode: v as MegaMode }))}
         />
-        <div className="sm:col-span-2">
-          <ToggleField
-            label="Pick order"
-            value={cfg.pickOrder}
-            options={[
-              { value: "sequential", label: "Sequential", hint: "1,2,3,1,2,3…" },
-              { value: "snake", label: "Snake", hint: "1,2,3,3,2,1…" },
-            ]}
-            onChange={(v) => setCfg((c) => ({ ...c, pickOrder: v as PickOrder }))}
-          />
-        </div>
+        {multiplayer && (
+          <div className="sm:col-span-2">
+            <ToggleField
+              label="Draft mode"
+              value={cfg.draftMode ?? "standard"}
+              options={[
+                { value: "standard", label: "Standard", hint: "Take turns picking" },
+                { value: "auction", label: "Auction 💰", hint: "Bid money on every mon" },
+              ]}
+              onChange={(v) => setCfg((c) => ({ ...c, draftMode: v as DraftMode }))}
+            />
+          </div>
+        )}
+        {!isAuction && (
+          <div className="sm:col-span-2">
+            <ToggleField
+              label="Pick order"
+              value={cfg.pickOrder}
+              options={[
+                { value: "sequential", label: "Sequential", hint: "1,2,3,1,2,3…" },
+                { value: "snake", label: "Snake", hint: "1,2,3,3,2,1…" },
+              ]}
+              onChange={(v) => setCfg((c) => ({ ...c, pickOrder: v as PickOrder }))}
+            />
+          </div>
+        )}
+        {isAuction && (
+          <>
+            <NumberField
+              label="Auction timer (s)"
+              value={cfg.auctionTimerSeconds ?? 30}
+              min={5}
+              max={120}
+              onChange={(v) => setCfg((c) => ({ ...c, auctionTimerSeconds: v }))}
+              hint="Clock per mon, started by the first bid. Bids under 10s left reset it to 10s."
+            />
+            <NumberField
+              label="Starting budget"
+              value={cfg.startingBudget ?? 100}
+              min={10}
+              max={1000}
+              onChange={(v) => setCfg((c) => ({ ...c, startingBudget: v }))}
+              hint="Money per player. Bids start at $1."
+            />
+            <div className="sm:col-span-2">
+              <ToggleField
+                label="Reveal"
+                value={cfg.revealMode ?? "auction"}
+                options={[
+                  {
+                    value: "auction",
+                    label: "On auction",
+                    hint: "Each mon revealed as it hits the block",
+                  },
+                  {
+                    value: "roll",
+                    label: "On roll",
+                    hint: "Whole pool visible up front, auctioned one at a time",
+                  },
+                ]}
+                onChange={(v) => setCfg((c) => ({ ...c, revealMode: v as RevealMode }))}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <ToggleField
+                label="Overdrafting"
+                value={cfg.allowOverdraft ? "yes" : "no"}
+                options={[
+                  {
+                    value: "no",
+                    label: "Off",
+                    hint: "Full teams can't bid",
+                  },
+                  {
+                    value: "yes",
+                    label: "On",
+                    hint: "Full teams may bid; winning forces a swap, released mon requeued",
+                  },
+                ]}
+                onChange={(v) => setCfg((c) => ({ ...c, allowOverdraft: v === "yes" }))}
+              />
+            </div>
+          </>
+        )}
         <div className="sm:col-span-2">
           <ToggleField
             label="Forms"
@@ -212,9 +292,7 @@ export function ToggleField({
               }`}
             >
               <div className="font-semibold">{opt.label}</div>
-              {opt.hint && (
-                <div className="text-[11px] text-muted-foreground">{opt.hint}</div>
-              )}
+              {opt.hint && <div className="text-[11px] text-muted-foreground">{opt.hint}</div>}
             </button>
           );
         })}

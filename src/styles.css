@@ -320,3 +320,39 @@
   opacity: 0.35;
   cursor: not-allowed;
 }
+
+/* ---- Auction draft animations ---- */
+
+/* New mon hitting the block: pop in with a little overshoot. */
+@keyframes auction-reveal-in {
+  0% { opacity: 0; transform: translateY(14px) scale(0.94); }
+  70% { opacity: 1; transform: translateY(-2px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.auction-reveal {
+  animation: auction-reveal-in 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+/* Soft breathing glow behind the spotlight sprite. */
+@keyframes auction-spotlight-pulse {
+  0%, 100% { box-shadow: 0 0 18px 2px oklch(0.75 0.12 200 / 0.18); }
+  50% { box-shadow: 0 0 28px 6px oklch(0.75 0.12 200 / 0.32); }
+}
+.auction-spotlight {
+  animation: auction-spotlight-pulse 2.6s ease-in-out infinite;
+}
+
+/* Roulette landing on the winner: quick celebratory pop. */
+@keyframes auction-roulette-land {
+  0% { transform: scale(0.9); }
+  55% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.auction-roulette-final {
+  animation: auction-roulette-land 0.4s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auction-reveal, .auction-roulette-final { animation: none; }
+  .auction-spotlight { animation: none; box-shadow: 0 0 18px 2px oklch(0.75 0.12 200 / 0.22); }
+}
