@@ -104,13 +104,50 @@ export function AuctionDraft({
   const noBidsYet = bid === 0;
   const revealAll = (room.config.revealMode ?? "auction") === "roll";
 
+  // Roulette overlay for random assignments. Declared up here (not with the
+  // rest of the animation logic below) because the just-assigned pick must
+  // be hidden from the team displays WHILE the wheel spins — otherwise the
+  // winner's team visibly gains the mon before the animation lands, spoiling
+  // it. The server adds the pick immediately (it has to, to stay
+  // authoritative), so the client hides that specific pick locally until the
+  // reveal is acked.
+  const [roulette, setRoulette] = useState<{
+    entry: DraftEntry;
+    winner: string;
+    display: string;
+  } | null>(null);
+
+  // Picks with the actively-revealing random assignment filtered out, so
+  // "Teams so far" and the per-player counts don't spoil the roulette.
+  // Uses the authoritative server flag (auction.pending_reveal) rather than
+  // the client `roulette` state, so the pick is hidden from the very first
+  // render after it lands — the client effect that starts the wheel runs
+  // after paint, so keying off `roulette` alone could flash one spoiled
+  // frame. pending_reveal is true for exactly the window between the random
+  // assignment and the ack_reveal that ends the animation.
+  const pendingReveal = !!auction.pending_reveal;
+  const hideEntry = pendingReveal && last?.random && last.player ? last.entry : null;
+  const hidePlayer = pendingReveal && last?.random && last.player ? last.player : null;
+  const visiblePicks = useMemo(() => {
+    const all = room.picks ?? [];
+    if (!hideEntry || !hidePlayer) return all;
+    let removed = false;
+    return all.filter((pk) => {
+      if (!removed && pk.entryId === hideEntry && pk.playerId === hidePlayer) {
+        removed = true;
+        return false;
+      }
+      return true;
+    });
+  }, [room.picks, hideEntry, hidePlayer]);
+
   const teamCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const pk of room.picks ?? []) {
+    for (const pk of visiblePicks) {
       counts.set(pk.playerId, (counts.get(pk.playerId) ?? 0) + 1);
     }
     return counts;
-  }, [room.picks]);
+  }, [visiblePicks]);
 
   const myCount = teamCounts.get(selfId) ?? 0;
   const myMoney = money[selfId] ?? 0;
@@ -180,11 +217,6 @@ export function AuctionDraft({
   }, [secondsLeft]);
 
   // ---- Roulette overlay for random assignments ----
-  const [roulette, setRoulette] = useState<{
-    entry: DraftEntry;
-    winner: string;
-    display: string;
-  } | null>(null);
   const canBid =
     !!current &&
     !pendingSwap &&
@@ -662,7 +694,7 @@ export function AuctionDraft({
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {(room.player_order ?? []).filter(Boolean).map((pid) => {
-            const team = (room.picks ?? [])
+            const team = visiblePicks
               .filter((pk) => pk.playerId === pid)
               .map((pk) => byEntryId.get(pk.entryId))
               .filter(Boolean) as DraftEntry[];

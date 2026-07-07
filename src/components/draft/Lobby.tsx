@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { applyRoomAction, type RoomPlayerRow, type RoomRow } from "@/lib/room-client";
 import { ConfigPanel } from "./ConfigPanel";
-import { type Config, computeOverCapacity, rollPool, shuffle } from "@/lib/draft-engine";
+import {
+  type Config,
+  buildCustomPool,
+  computeOverCapacity,
+  rollPool,
+  shuffle,
+} from "@/lib/draft-engine";
 import { playShinyChime } from "@/lib/shiny-sound";
 
 export function Lobby({
@@ -91,7 +97,20 @@ export function Lobby({
     );
 
   const begin = () => {
-    const pool = rollPool(room.config);
+    const cfg = room.config;
+    const totalNeeded = cfg.players * 6 + cfg.extras;
+    let pool;
+    if (cfg.useCustomPool) {
+      if ((cfg.customPool?.length ?? 0) !== totalNeeded) {
+        setErr(
+          `Custom pool needs exactly ${totalNeeded} mons (currently ${cfg.customPool?.length ?? 0}). Adjust your selection or the player/extra counts.`,
+        );
+        return;
+      }
+      pool = buildCustomPool(cfg);
+    } else {
+      pool = rollPool(cfg);
+    }
     void run("begin", async () => {
       await applyRoomAction(room.code, selfId, { type: "begin", pool });
       if (pool.some((e) => e.shiny)) playShinyChime();
@@ -111,11 +130,16 @@ export function Lobby({
 
   const overCapacity = computeOverCapacity(room.config);
   const enoughPlayers = players.length >= 2;
+  const customTotalNeeded = room.config.players * 6 + room.config.extras;
+  const customPoolIncomplete =
+    room.config.useCustomPool && (room.config.customPool?.length ?? 0) !== customTotalNeeded;
   const startDisabled = !enoughPlayers
     ? "Need at least 2 players"
     : overCapacity
       ? "Pool too large"
-      : null;
+      : customPoolIncomplete
+        ? `Custom pool: pick ${customTotalNeeded} (have ${room.config.customPool?.length ?? 0})`
+        : null;
 
   return (
     <div className="grid gap-6 md:grid-cols-[1fr_360px]">

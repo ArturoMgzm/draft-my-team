@@ -44,6 +44,11 @@ export type Config = {
    * after every mon resolves. 0 disables. Prevents perma-broke players and
    * stops overdrafters stalling the game forever. */
   auctionIncome?: number;
+  /** When set, the pool is hand-picked from these entry ids rather than
+   * rolled randomly. Order is still shuffled at draft start. */
+  useCustomPool?: boolean;
+  /** The hand-picked entry ids (only meaningful when useCustomPool). */
+  customPool?: string[];
 };
 
 export const DEFAULT_CONFIG: Config = {
@@ -121,6 +126,14 @@ export function buildNonMegaEntries(splitForms: boolean): DraftEntry[] {
   );
 }
 
+// Every selectable entry for the custom-pool picker: all non-mega base
+// entries plus every mega-capable entry, in a stable (unshuffled) order.
+// Non-mega bases first, then megas — the same two groups rollPool draws
+// from — so the picker grid reads consistently.
+export function buildAllEntries(splitForms: boolean): DraftEntry[] {
+  return [...buildNonMegaEntries(splitForms), ...buildMegaCapableEntries(splitForms)];
+}
+
 export function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
   const entries: DraftEntry[] = [];
   for (const sp of REG_MB_POOL) {
@@ -163,6 +176,21 @@ export function rollPool(cfg: Config): DraftEntry[] {
     chosen = [...lockedMegas, ...rest];
   }
   chosen = chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 4096 }));
+  return shuffle(chosen);
+}
+
+// Builds the draft pool from a hand-picked set of entry ids (custom pool
+// mode). Resolves each id against the full entry list, applies the same
+// per-entry shiny roll rollPool uses, and shuffles the order — so "custom
+// pool" fixes *which* mons are in play but not the order they're auctioned
+// or drafted in.
+export function buildCustomPool(cfg: Config): DraftEntry[] {
+  const all = new Map(buildAllEntries(cfg.splitForms).map((e) => [e.id, e]));
+  const chosen: DraftEntry[] = [];
+  for (const id of cfg.customPool ?? []) {
+    const e = all.get(id);
+    if (e) chosen.push({ ...e, shiny: Math.random() < 1 / 4096 });
+  }
   return shuffle(chosen);
 }
 

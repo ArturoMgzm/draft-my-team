@@ -1,3 +1,4 @@
+import { PoolPicker } from "./PoolPicker";
 import {
   type Config,
   type DraftMode,
@@ -199,6 +200,25 @@ export function ConfigPanel({
           Pool too large — not enough eligible Pokémon for the selected split.
         </div>
       )}
+
+      {/* Custom pool: hand-pick the exact mons instead of rolling randomly.
+          Order is still shuffled at draft start. Available in all modes. */}
+      <div className="rounded-xl border border-border bg-card/50 p-3">
+        <ToggleField
+          label="Pool selection"
+          value={cfg.useCustomPool ? "custom" : "random"}
+          options={[
+            { value: "random", label: "Random roll", hint: "Auto-pick the pool for you" },
+            { value: "custom", label: "Custom 🎯", hint: "Hand-pick every mon in the pool" },
+          ]}
+          onChange={(v) => setCfg((c) => ({ ...c, useCustomPool: v === "custom" }))}
+        />
+        {cfg.useCustomPool && (
+          <div className="mt-3">
+            <PoolPicker cfg={cfg} setCfg={setCfg} readonly={readonly} />
+          </div>
+        )}
+      </div>
 
       {!hideStart && onStart && (
         <button
