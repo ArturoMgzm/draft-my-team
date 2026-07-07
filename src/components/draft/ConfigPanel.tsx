@@ -9,7 +9,7 @@ import {
   computeMegaMax,
   computeOverCapacity,
 } from "@/lib/draft-engine";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export { DEFAULT_CONFIG };
 
@@ -58,6 +58,7 @@ export function ConfigPanel({
           value={cfg.players}
           min={1}
           max={8}
+          emptyFallback={2}
           onChange={(v) => setCfg((c) => ({ ...c, players: v }))}
           hint="6 Picks per player"
         />
@@ -119,6 +120,7 @@ export function ConfigPanel({
               value={cfg.auctionTimerSeconds ?? 30}
               min={5}
               max={120}
+              emptyFallback={30}
               onChange={(v) => setCfg((c) => ({ ...c, auctionTimerSeconds: v }))}
               hint="Clock per mon, started by the first bid. Bids under 10s left reset it to 10s."
             />
@@ -127,6 +129,7 @@ export function ConfigPanel({
               value={cfg.startingBudget ?? 100}
               min={10}
               max={1000}
+              emptyFallback={100}
               onChange={(v) => setCfg((c) => ({ ...c, startingBudget: v }))}
               hint="Money per player. Bids start at $1."
             />
@@ -241,6 +244,7 @@ export function NumberField({
   max,
   onChange,
   hint,
+  emptyFallback,
 }: {
   label: string;
   value: number;
@@ -248,7 +252,37 @@ export function NumberField({
   max: number;
   onChange: (n: number) => void;
   hint?: string;
+  /** Value committed when the field is left empty. Defaults to `min`. Lets
+   * callers say e.g. "Players left empty → 2" or "budget left empty → 100". */
+  emptyFallback?: number;
 }) {
+  // While the input is focused it holds its own raw text, so the person can
+  // freely clear it and retype (including intermediate states below `min`,
+  // like deleting the "5" in "5" on the way to typing "10"). We only commit
+  // and clamp on blur. When not focused, it mirrors the real value.
+  const [text, setText] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  const fallback = emptyFallback ?? min;
+
+  function commit(raw: string) {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      onChange(fallback);
+      return;
+    }
+    const v = parseInt(trimmed, 10);
+    if (Number.isNaN(v)) {
+      onChange(fallback);
+      return;
+    }
+    onChange(Math.min(max, Math.max(min, v)));
+  }
+
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -267,11 +301,15 @@ export function NumberField({
           type="number"
           min={min}
           max={max}
-          value={value}
-          onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            if (Number.isNaN(v)) return;
-            onChange(Math.min(max, Math.max(min, v)));
+          value={focused ? text : String(value)}
+          onFocus={(e) => {
+            setFocused(true);
+            setText(e.target.value);
+          }}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={(e) => {
+            setFocused(false);
+            commit(e.target.value);
           }}
           className="w-full bg-transparent text-center text-lg font-bold tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />

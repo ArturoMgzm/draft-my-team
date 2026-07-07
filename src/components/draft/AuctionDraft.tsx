@@ -491,7 +491,7 @@ export function AuctionDraft({
 
           {/* Roulette overlay — the mon is the centerpiece */}
           {roulette && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-background/92 backdrop-blur-sm">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 overflow-hidden px-4 py-4 bg-background/92 backdrop-blur-sm">
               <div className="text-xs font-bold uppercase tracking-[0.3em] text-muted-foreground">
                 No bids — fate decides!
               </div>
@@ -511,13 +511,13 @@ export function AuctionDraft({
                   />
                 </div>
               </div>
-              <div className="text-lg font-black">{roulette.entry.name}</div>
+              <div className="max-w-full truncate text-lg font-black">{roulette.entry.name}</div>
               <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
                 goes to…
               </div>
               <div
                 key={roulette.display}
-                className={`rounded-xl border-2 px-8 py-2.5 text-3xl font-black ${
+                className={`max-w-full break-words rounded-xl border-2 px-6 py-2.5 text-center text-2xl font-black sm:text-3xl ${
                   roulette.display === nameOf(roulette.winner)
                     ? "auction-roulette-final border-accent text-accent"
                     : "border-border text-foreground"
