@@ -115,6 +115,9 @@ export function AuctionDraft({
   const myCount = teamCounts.get(selfId) ?? 0;
   const myMoney = money[selfId] ?? 0;
   const allowOverdraft = !!room.config.allowOverdraft;
+  const folded = auction.folded ?? [];
+  const iHaveFolded = folded.includes(selfId);
+  const amTopBidder = bidder === selfId && bid > 0;
 
   const [err, setErr] = useState<string | null>(null);
   const [customBid, setCustomBid] = useState("");
@@ -186,9 +189,14 @@ export function AuctionDraft({
     !!current &&
     !pendingSwap &&
     !roulette &&
+    !iHaveFolded &&
     secondsLeft > 0 &&
     (myCount < 6 || allowOverdraft) &&
     myMoney > bid;
+  // Fold is available to anyone who could otherwise act but isn't the one
+  // currently holding the top bid.
+  const canFold =
+    !!current && !pendingSwap && !roulette && !iHaveFolded && !amTopBidder && secondsLeft > 0;
   const rouletteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevSeq = useRef(seq);
   useEffect(() => {
@@ -196,23 +204,56 @@ export function AuctionDraft({
     prevSeq.current = seq;
     if (!last) return;
     if (last.random && last.player) {
-      // Client-side roulette animation toward the server-decided winner:
-      // names cycle with accelerating slowdown, then land on the real one.
+      // Client-side roulette animation toward the server-decided winner.
+      // Only players with an unfilled team could have received it, so the
+      // cycling names are drawn from exactly that set (computed from the
+      // picks snapshot BEFORE this assignment — the winner's slot count at
+      // decision time was < 6). The server has parked in pending_reveal and
+      // will not open the next mon until we ack_reveal below.
       const entry = byEntryId.get(last.entry);
-      if (!entry) return;
-      const ids = (room.player_order ?? []).filter(Boolean);
+      if (!entry) {
+        void applyRoomAction(room.code, selfId, { type: "ack_reveal" }).catch(() => {});
+        return;
+      }
+      const counts = new Map<string, number>();
+      for (const pk of room.picks ?? []) {
+        // Exclude the just-assigned mon so the winner's pre-assignment count is used.
+        if (pk.entryId === last.entry && pk.playerId === last.player) continue;
+        counts.set(pk.playerId, (counts.get(pk.playerId) ?? 0) + 1);
+      }
+      const candidates = (room.player_order ?? [])
+        .filter(Boolean)
+        .filter((pid) => (counts.get(pid) ?? 0) < 6);
+      const ackReveal = () => {
+        void applyRoomAction(room.code, selfId, { type: "ack_reveal" }).catch(() => {});
+      };
+
+      // Only one possible recipient → no suspense to build, skip the spin.
+      if (candidates.length <= 1) {
+        setRoulette({ entry, winner: last.player, display: nameOf(last.player) });
+        playRouletteWin();
+        rouletteTimerRef.current = setTimeout(() => {
+          setRoulette(null);
+          ackReveal();
+        }, 1200);
+        return;
+      }
+
       let hop = 0;
       const totalHops = 14 + Math.floor(Math.random() * 4);
       const step = () => {
         hop += 1;
-        const pid = hop >= totalHops ? last.player! : ids[hop % ids.length];
+        const pid = hop >= totalHops ? last.player! : candidates[hop % candidates.length];
         setRoulette({ entry, winner: last.player!, display: nameOf(pid) });
         playRouletteTick();
         if (hop < totalHops) {
           rouletteTimerRef.current = setTimeout(step, 60 + hop * 22);
         } else {
           playRouletteWin();
-          rouletteTimerRef.current = setTimeout(() => setRoulette(null), 2200);
+          rouletteTimerRef.current = setTimeout(() => {
+            setRoulette(null);
+            ackReveal();
+          }, 2200);
         }
       };
       step();
@@ -246,6 +287,15 @@ export function AuctionDraft({
     setErr(null);
     try {
       await applyRoomAction(room.code, selfId, { type: "bid", amount });
+    } catch (e) {
+      setErr(String((e as Error)?.message ?? e));
+    }
+  }
+
+  async function fold() {
+    setErr(null);
+    try {
+      await applyRoomAction(room.code, selfId, { type: "fold" });
     } catch (e) {
       setErr(String((e as Error)?.message ?? e));
     }
@@ -359,6 +409,24 @@ export function AuctionDraft({
                   </div>
                 </div>
               </div>
+              {/* Fold row */}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-[10px] text-muted-foreground">
+                  {iHaveFolded
+                    ? "You folded — out until the next mon."
+                    : amTopBidder
+                      ? "You hold the top bid."
+                      : "Not interested? Fold to speed things up."}
+                </span>
+                <button
+                  type="button"
+                  disabled={!canFold}
+                  onClick={() => void fold()}
+                  className="rounded-lg border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-primary/20 active:scale-95 disabled:opacity-35"
+                >
+                  {iHaveFolded ? "Folded" : "Fold"}
+                </button>
+              </div>
               {/* Countdown */}
               <div className="mt-3">
                 <div className="mb-1 flex items-baseline justify-between text-[11px]">
@@ -463,6 +531,9 @@ export function AuctionDraft({
                       {nameOf(pid)}
                       {isMe && <span className="ml-1 text-[10px] text-muted-foreground">you</span>}
                       {isTop && <span className="ml-1 text-[10px] text-accent">top bid</span>}
+                      {folded.includes(pid) && !isTop && (
+                        <span className="ml-1 text-[10px] text-muted-foreground">folded</span>
+                      )}
                     </span>
                     <span className="ml-auto whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">
                       {count}/6
@@ -540,15 +611,31 @@ export function AuctionDraft({
                 {queue.map((id) => {
                   const e = byEntryId.get(id);
                   if (!e) return null;
+                  const extraForms = getFormOptions(e).length > 1;
+                  const badge = e.isMega ? "M" : extraForms ? "⧉" : null;
                   return (
                     <div
                       key={id}
-                      title={e.name}
-                      className={`aspect-square rounded-md border border-border/40 bg-background/40 p-0.5 ${
+                      title={
+                        e.isMega
+                          ? `${e.name} (Mega)`
+                          : extraForms
+                            ? `${e.name} (multiple forms)`
+                            : e.name
+                      }
+                      className={`relative aspect-square rounded-md border border-border/40 bg-background/40 p-0.5 ${
                         e.shiny ? "shiny-frame !border-transparent" : ""
                       }`}
                     >
                       <HoverSprite entry={e} className="h-full w-full object-contain" />
+                      {badge && (
+                        <span
+                          className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-bl rounded-tr bg-accent px-0.5 text-[8px] font-black leading-none text-accent-foreground"
+                          aria-hidden
+                        >
+                          {badge}
+                        </span>
+                      )}
                     </div>
                   );
                 })}

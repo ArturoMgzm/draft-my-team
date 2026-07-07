@@ -35,6 +35,11 @@ export type AuctionState = {
   money?: Record<string, number>;
   /** Set when an overdraft win is waiting for the winner to release a mon. */
   pending_swap?: { player: string; won: string } | null;
+  /** True while a random assignment's reveal animation plays; the next
+   * auction won't start until any client acks it. */
+  pending_reveal?: boolean | null;
+  /** Players who have folded on the current mon (cleared each new mon). */
+  folded?: string[];
   /** How the previous mon left the block — drives client animations. */
   last?: {
     entry: string;
@@ -91,7 +96,9 @@ export type RoomAction =
   | { type: "cancel" }
   | { type: "set_timer"; seconds: number | null }
   | { type: "bid"; amount: number }
+  | { type: "fold" }
   | { type: "resolve_auction" }
+  | { type: "ack_reveal" }
   | { type: "swap_out"; entryId: string }
   | { type: "pick"; entryId: string; forPlayer?: string };
 

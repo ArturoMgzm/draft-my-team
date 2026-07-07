@@ -40,6 +40,10 @@ export type Config = {
   allowOverdraft?: boolean;
   /** Auction mode: each player's starting money. */
   startingBudget?: number;
+  /** Auction mode: money paid to each incomplete-team, non-winning player
+   * after every mon resolves. 0 disables. Prevents perma-broke players and
+   * stops overdrafters stalling the game forever. */
+  auctionIncome?: number;
 };
 
 export const DEFAULT_CONFIG: Config = {
@@ -54,6 +58,7 @@ export const DEFAULT_CONFIG: Config = {
   revealMode: "auction",
   allowOverdraft: false,
   startingBudget: 100,
+  auctionIncome: 0,
 };
 
 const MEGA_FORM_OVERRIDES: Record<string, string> = {

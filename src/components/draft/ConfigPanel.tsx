@@ -129,6 +129,14 @@ export function ConfigPanel({
               onChange={(v) => setCfg((c) => ({ ...c, startingBudget: v }))}
               hint="Money per player. Bids start at $1."
             />
+            <NumberField
+              label="Income per auction"
+              value={cfg.auctionIncome ?? 0}
+              min={0}
+              max={100}
+              onChange={(v) => setCfg((c) => ({ ...c, auctionIncome: v }))}
+              hint="Paid to each non-winning player with an unfilled team after every mon. 0 = off."
+            />
             <div className="sm:col-span-2">
               <ToggleField
                 label="Reveal"
