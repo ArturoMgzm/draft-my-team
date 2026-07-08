@@ -155,7 +155,12 @@ export function RoomDraft({
         >
           🧮 Calculator
         </button>
-        <CalcSidebar pool={room.pool ?? []} open={calcOpen} onClose={() => setCalcOpen(false)} />
+        <CalcSidebar
+          pool={room.pool ?? []}
+          regulationId={room.config.regulation}
+          open={calcOpen}
+          onClose={() => setCalcOpen(false)}
+        />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xl font-bold">Final Teams</h2>
           <div className="flex items-center gap-2">
@@ -201,7 +206,12 @@ export function RoomDraft({
       >
         🧮 Calculator
       </button>
-      <CalcSidebar pool={room.pool ?? []} open={calcOpen} onClose={() => setCalcOpen(false)} />
+      <CalcSidebar
+        pool={room.pool ?? []}
+        regulationId={room.config.regulation}
+        open={calcOpen}
+        onClose={() => setCalcOpen(false)}
+      />
       <TeamsSidebar
         players={sidebarPlayers}
         activeIdx={activeIdx}

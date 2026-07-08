@@ -1,294 +1,410 @@
-import { useEffect, useMemo, useState } from "react";
-import { applyRoomAction, type RoomPlayerRow, type RoomRow } from "@/lib/room-client";
-import { ConfigPanel } from "./ConfigPanel";
+import { PoolPicker } from "./PoolPicker";
+import { DEFAULT_REGULATION_ID, REGULATIONS } from "@/lib/regulations/registry";
 import {
   type Config,
-  buildCustomPool,
+  type DraftMode,
+  type MegaMode,
+  type PickOrder,
+  type RevealMode,
+  DEFAULT_CONFIG,
+  computeMegaMax,
   computeOverCapacity,
-  rollPool,
-  shuffle,
 } from "@/lib/draft-engine";
-import { playShinyChime } from "@/lib/shiny-sound";
+import { useEffect, useState } from "react";
 
-export function Lobby({
-  room,
-  players,
-  selfId,
-  onLeave,
+export { DEFAULT_CONFIG };
+
+export function ConfigPanel({
+  cfg,
+  setCfg,
+  onStart,
+  startLabel = "Roll Pool & Start Draft",
+  readonly = false,
+  hideStart = false,
+  startDisabledReason,
+  multiplayer = false,
 }: {
-  room: RoomRow;
-  players: RoomPlayerRow[];
-  selfId: string;
-  onLeave: () => void;
+  cfg: Config;
+  setCfg: (updater: (c: Config) => Config) => void;
+  onStart?: () => void;
+  startLabel?: string;
+  readonly?: boolean;
+  hideStart?: boolean;
+  startDisabledReason?: string | null;
+  /** Auction mode is only meaningful with multiple live players, so its
+   * settings only render in multiplayer lobbies. */
+  multiplayer?: boolean;
 }) {
-  const isHost = room.host_id === selfId;
-  const self = players.find((p) => p.player_id === selfId);
-  const [myName, setMyName] = useState(self?.username ?? "");
-  const [busy, setBusy] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const totalNeeded = cfg.players * 6 + cfg.extras;
+  const megaMax = computeMegaMax(cfg, totalNeeded);
+  const overCapacity = computeOverCapacity(cfg);
+  const isAuction = multiplayer && (cfg.draftMode ?? "standard") === "auction";
 
   useEffect(() => {
-    if (self && self.username !== myName) setMyName(self.username);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [self?.username]);
-
-  // Compose ordered + lobby-only players list
-  const ordered = useMemo(() => {
-    const byId = new Map(players.map((p) => [p.player_id, p]));
-    const seen = new Set<string>();
-    const list: RoomPlayerRow[] = [];
-    for (const id of room.player_order ?? []) {
-      const p = byId.get(id);
-      if (p) {
-        list.push(p);
-        seen.add(id);
-      }
-    }
-    for (const p of players) if (!seen.has(p.player_id)) list.push(p);
-    return list;
-  }, [players, room.player_order]);
-
-  async function run<T extends unknown[]>(
-    label: string,
-    fn: (...args: T) => Promise<unknown>,
-    ...args: T
-  ) {
-    setBusy(label);
-    setErr(null);
-    try {
-      await fn(...args);
-    } catch (e) {
-      setErr(String((e as Error)?.message ?? e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const updateUsername = (name: string) => {
-    setMyName(name);
-    void applyRoomAction(room.code, selfId, {
-      type: "join",
-      username: name.trim() || "Player",
-    });
-  };
-
-  const setConfig = (cfg: Config) =>
-    run("config", () => applyRoomAction(room.code, selfId, { type: "update_config", config: cfg }));
-
-  const move = (idx: number, dir: -1 | 1) => {
-    const arr = ordered.map((p) => p.player_id);
-    const j = idx + dir;
-    if (j < 0 || j >= arr.length) return;
-    [arr[idx], arr[j]] = [arr[j], arr[idx]];
-    void run("order", () => applyRoomAction(room.code, selfId, { type: "set_order", order: arr }));
-  };
-
-  const randomizeOrder = () => {
-    const order = shuffle(ordered.map((p) => p.player_id));
-    void run("order", () => applyRoomAction(room.code, selfId, { type: "set_order", order }));
-  };
-
-  const kick = (pid: string) =>
-    void run("kick", () => applyRoomAction(room.code, selfId, { type: "kick", player_id: pid }));
-
-  const toggleOverride = (v: boolean) =>
-    void run("override", () =>
-      applyRoomAction(room.code, selfId, { type: "toggle_override", value: v }),
-    );
-
-  const begin = () => {
-    const cfg = room.config;
-    const totalNeeded = cfg.players * 6 + cfg.extras;
-    let pool;
-    if (cfg.useCustomPool) {
-      if ((cfg.customPool?.length ?? 0) !== totalNeeded) {
-        setErr(
-          `Custom pool needs exactly ${totalNeeded} mons (currently ${cfg.customPool?.length ?? 0}). Adjust your selection or the player/extra counts.`,
-        );
-        return;
-      }
-      pool = buildCustomPool(cfg);
-    } else {
-      pool = rollPool(cfg);
-    }
-    void run("begin", async () => {
-      await applyRoomAction(room.code, selfId, { type: "begin", pool });
-      if (pool.some((e) => e.shiny)) playShinyChime();
-    });
-  };
-
-  const leave = () =>
-    void run("leave", async () => {
-      await applyRoomAction(room.code, selfId, { type: "leave" });
-      onLeave();
-    });
-
-  const cancel = () =>
-    void run("cancel", async () => {
-      await applyRoomAction(room.code, selfId, { type: "cancel" });
-    });
-
-  const overCapacity = computeOverCapacity(room.config);
-  const enoughPlayers = players.length >= 2;
-  const customTotalNeeded = room.config.players * 6 + room.config.extras;
-  const customPoolIncomplete =
-    room.config.useCustomPool && (room.config.customPool?.length ?? 0) !== customTotalNeeded;
-  const startDisabled = !enoughPlayers
-    ? "Need at least 2 players"
-    : overCapacity
-      ? "Pool too large"
-      : customPoolIncomplete
-        ? `Custom pool: pick ${customTotalNeeded} (have ${room.config.customPool?.length ?? 0})`
-        : null;
+    if (!readonly && cfg.megas > megaMax) setCfg((c) => ({ ...c, megas: megaMax }));
+  }, [cfg.megas, megaMax, readonly, setCfg]);
 
   return (
-    <div className="grid gap-6 md:grid-cols-[1fr_360px]">
-      <div className="space-y-4">
-        <div className="rounded-2xl border border-accent/40 bg-accent/5 p-5">
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">Room code</div>
-          <div className="mt-1 flex items-center gap-3">
-            <code className="text-3xl font-black tracking-[0.3em] text-accent">{room.code}</code>
-            <button
-              onClick={() => navigator.clipboard?.writeText(room.code)}
-              className="rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-secondary"
-            >
-              Copy
-            </button>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {isHost ? "You are the host" : "Waiting for host…"}
-            </span>
-          </div>
-        </div>
+    <section className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-lg">
+      <div>
+        <h2 className="text-lg font-bold">Draft Configuration</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Shared pool of {totalNeeded} Pokémon ({cfg.players * 6} slots + {cfg.extras} extras).
+        </p>
+      </div>
 
-        <ConfigPanel
-          cfg={room.config}
-          setCfg={(updater) => setConfig(updater(room.config))}
-          readonly={!isHost}
-          hideStart={!isHost}
-          onStart={begin}
-          startLabel={busy === "begin" ? "Rolling…" : "Roll Pool & Start Draft"}
-          startDisabledReason={startDisabled}
-          multiplayer
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Regulation
+        </span>
+        <select
+          disabled={readonly}
+          value={cfg.regulation ?? DEFAULT_REGULATION_ID}
+          onChange={(e) => {
+            const regulation = e.target.value;
+            setCfg((c) => ({
+              // A custom pool holds entry ids from the old regulation, which
+              // may not exist in the new one — clear it so the picker starts
+              // fresh rather than silently carrying invalid selections.
+              ...c,
+              regulation,
+              customPool: c.regulation === regulation ? c.customPool : [],
+            }));
+          }}
+          className="h-11 rounded-xl border border-border bg-input px-3 text-sm font-semibold outline-none"
+        >
+          <optgroup label="Current">
+            {REGULATIONS.filter((r) => r.status === "current").map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.longName}
+              </option>
+            ))}
+          </optgroup>
+          {REGULATIONS.some((r) => r.status === "legacy") && (
+            <optgroup label="Past regulations">
+              {REGULATIONS.filter((r) => r.status === "legacy").map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.longName}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+        <span className="text-[11px] text-muted-foreground">
+          Past regulations stay available to replay anytime.
+        </span>
+      </label>
+
+      <fieldset disabled={readonly} className="grid gap-4 sm:grid-cols-2">
+        <NumberField
+          label="Players"
+          value={cfg.players}
+          min={1}
+          max={8}
+          emptyFallback={2}
+          onChange={(v) => setCfg((c) => ({ ...c, players: v }))}
+          hint="6 Picks per player"
         />
-
-        {isHost && (
-          <label className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
-            <input
-              type="checkbox"
-              checked={room.host_override}
-              onChange={(e) => toggleOverride(e.target.checked)}
+        <NumberField
+          label="Extra options"
+          value={cfg.extras}
+          min={0}
+          max={50}
+          onChange={(v) => setCfg((c) => ({ ...c, extras: v }))}
+          hint="Bonus picks in shared pool"
+        />
+        <NumberField
+          label="Megas in pool"
+          value={cfg.megas}
+          min={0}
+          max={megaMax}
+          onChange={(v) => setCfg((c) => ({ ...c, megas: v }))}
+          hint={`Max ${megaMax}`}
+        />
+        <ToggleField
+          label="Mega count"
+          value={cfg.megaMode}
+          options={[
+            { value: "exact", label: "Exactly", hint: "Always X megas in pool" },
+            { value: "atleast", label: "At least", hint: "X guaranteed, more may roll" },
+          ]}
+          onChange={(v) => setCfg((c) => ({ ...c, megaMode: v as MegaMode }))}
+        />
+        {multiplayer && (
+          <div className="sm:col-span-2">
+            <ToggleField
+              label="Draft mode"
+              value={cfg.draftMode ?? "standard"}
+              options={[
+                { value: "standard", label: "Standard", hint: "Take turns picking" },
+                { value: "auction", label: "Auction 💰", hint: "Bid money on every mon" },
+              ]}
+              onChange={(v) => setCfg((c) => ({ ...c, draftMode: v as DraftMode }))}
             />
-            <span>
-              Host overrides{" "}
-              <span className="text-xs text-muted-foreground">
-                — allow host to undo picks and change active player mid-draft
-              </span>
-            </span>
-          </label>
+          </div>
+        )}
+        {!isAuction && (
+          <div className="sm:col-span-2">
+            <ToggleField
+              label="Pick order"
+              value={cfg.pickOrder}
+              options={[
+                { value: "sequential", label: "Sequential", hint: "1,2,3,1,2,3…" },
+                { value: "snake", label: "Snake", hint: "1,2,3,3,2,1…" },
+              ]}
+              onChange={(v) => setCfg((c) => ({ ...c, pickOrder: v as PickOrder }))}
+            />
+          </div>
+        )}
+        {isAuction && (
+          <>
+            <NumberField
+              label="Auction timer (s)"
+              value={cfg.auctionTimerSeconds ?? 30}
+              min={5}
+              max={120}
+              emptyFallback={30}
+              onChange={(v) => setCfg((c) => ({ ...c, auctionTimerSeconds: v }))}
+              hint="Clock per mon, started by the first bid. Bids under 10s left reset it to 10s."
+            />
+            <NumberField
+              label="Starting budget"
+              value={cfg.startingBudget ?? 100}
+              min={10}
+              max={1000}
+              emptyFallback={100}
+              onChange={(v) => setCfg((c) => ({ ...c, startingBudget: v }))}
+              hint="Money per player. Bids start at $1."
+            />
+            <NumberField
+              label="Income per auction"
+              value={cfg.auctionIncome ?? 0}
+              min={0}
+              max={100}
+              onChange={(v) => setCfg((c) => ({ ...c, auctionIncome: v }))}
+              hint="Paid to each non-winning player with an unfilled team after every mon. 0 = off."
+            />
+            <div className="sm:col-span-2">
+              <ToggleField
+                label="Reveal"
+                value={cfg.revealMode ?? "auction"}
+                options={[
+                  {
+                    value: "auction",
+                    label: "On auction",
+                    hint: "Each mon revealed as it hits the block",
+                  },
+                  {
+                    value: "roll",
+                    label: "On roll",
+                    hint: "Whole pool visible up front, auctioned one at a time",
+                  },
+                ]}
+                onChange={(v) => setCfg((c) => ({ ...c, revealMode: v as RevealMode }))}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <ToggleField
+                label="Overdrafting"
+                value={cfg.allowOverdraft ? "yes" : "no"}
+                options={[
+                  {
+                    value: "no",
+                    label: "Off",
+                    hint: "Full teams can't bid",
+                  },
+                  {
+                    value: "yes",
+                    label: "On",
+                    hint: "Full teams may bid; winning forces a swap, released mon requeued",
+                  },
+                ]}
+                onChange={(v) => setCfg((c) => ({ ...c, allowOverdraft: v === "yes" }))}
+              />
+            </div>
+          </>
+        )}
+        <div className="sm:col-span-2">
+          <ToggleField
+            label="Forms"
+            value={cfg.splitForms ? "split" : "unified"}
+            options={[
+              {
+                value: "split",
+                label: "Split forms",
+                hint: "Each variant is its own pick · one per species per player",
+              },
+              { value: "unified", label: "Unified", hint: "All variants under one entry" },
+            ]}
+            onChange={(v) => setCfg((c) => ({ ...c, splitForms: v === "split" }))}
+          />
+        </div>
+      </fieldset>
+
+      {overCapacity && (
+        <div className="rounded-md border border-primary/50 bg-primary/10 px-3 py-2 text-sm text-primary">
+          Pool too large — not enough eligible Pokémon for the selected split.
+        </div>
+      )}
+
+      {/* Custom pool: hand-pick the exact mons instead of rolling randomly.
+          Order is still shuffled at draft start. Available in all modes. */}
+      <div className="rounded-xl border border-border bg-card/50 p-3">
+        <ToggleField
+          label="Pool selection"
+          value={cfg.useCustomPool ? "custom" : "random"}
+          options={[
+            { value: "random", label: "Random roll", hint: "Auto-pick the pool for you" },
+            { value: "custom", label: "Custom 🎯", hint: "Hand-pick every mon in the pool" },
+          ]}
+          onChange={(v) => setCfg((c) => ({ ...c, useCustomPool: v === "custom" }))}
+        />
+        {cfg.useCustomPool && (
+          <div className="mt-3">
+            <PoolPicker cfg={cfg} setCfg={setCfg} readonly={readonly} />
+          </div>
         )}
       </div>
 
-      <div className="space-y-3">
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Your name
-          </div>
-          <input
-            type="text"
-            value={myName}
-            onChange={(e) => updateUsername(e.target.value)}
-            placeholder="Username"
-            className="w-full rounded-md border border-border bg-input px-2 py-1.5 text-sm"
-          />
-        </div>
+      {!hideStart && onStart && (
+        <button
+          onClick={onStart}
+          disabled={overCapacity || !!startDisabledReason}
+          title={startDisabledReason ?? undefined}
+          className="h-12 w-full rounded-xl bg-primary px-6 text-sm font-bold uppercase tracking-wider text-primary-foreground shadow-md transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {startDisabledReason ?? startLabel}
+        </button>
+      )}
+    </section>
+  );
+}
 
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <div className="mb-2 flex items-baseline justify-between">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Players ({players.length})
-            </div>
-            {isHost && players.length > 1 && (
-              <button onClick={randomizeOrder} className="text-[11px] text-accent hover:underline">
-                Randomize order
-              </button>
-            )}
-          </div>
-          <ul className="space-y-1.5">
-            {ordered.map((p, idx) => {
-              const isMe = p.player_id === selfId;
-              const isPlayerHost = p.player_id === room.host_id;
-              return (
-                <li
-                  key={p.player_id}
-                  className={`flex items-center gap-2 rounded-md border border-border bg-background/40 px-2 py-1.5 text-sm ${
-                    isMe ? "ring-1 ring-accent/50" : ""
-                  }`}
-                >
-                  <span className="flex h-6 w-6 items-center justify-center rounded bg-secondary text-xs font-bold">
-                    {idx + 1}
-                  </span>
-                  <span className="truncate">
-                    {p.username?.trim() || "Player"}
-                    {isPlayerHost && <span className="ml-1 text-[10px] text-accent">HOST</span>}
-                    {isMe && <span className="ml-1 text-[10px] text-muted-foreground">you</span>}
-                  </span>
-                  {isHost && (
-                    <div className="ml-auto flex items-center gap-1">
-                      <button
-                        onClick={() => move(idx, -1)}
-                        disabled={idx === 0}
-                        className="rounded px-1.5 text-xs hover:bg-secondary disabled:opacity-30"
-                        title="Move up"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        onClick={() => move(idx, 1)}
-                        disabled={idx === ordered.length - 1}
-                        className="rounded px-1.5 text-xs hover:bg-secondary disabled:opacity-30"
-                        title="Move down"
-                      >
-                        ↓
-                      </button>
-                      {!isMe && (
-                        <button
-                          onClick={() => kick(p.player_id)}
-                          className="rounded px-1.5 text-xs text-primary hover:bg-primary/10"
-                          title="Kick"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+export function NumberField({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+  hint,
+  emptyFallback,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+  hint?: string;
+  /** Value committed when the field is left empty. Defaults to `min`. Lets
+   * callers say e.g. "Players left empty → 2" or "budget left empty → 100". */
+  emptyFallback?: number;
+}) {
+  // While the input is focused it holds its own raw text, so the person can
+  // freely clear it and retype (including intermediate states below `min`,
+  // like deleting the "5" in "5" on the way to typing "10"). We only commit
+  // and clamp on blur. When not focused, it mirrors the real value.
+  const [text, setText] = useState(String(value));
+  const [focused, setFocused] = useState(false);
 
-        {err && (
-          <div className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs text-primary">
-            {err}
-          </div>
-        )}
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
 
-        <div className="flex gap-2">
-          <button
-            onClick={leave}
-            className="flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:bg-secondary"
-          >
-            Leave room
-          </button>
-          {isHost && room.status !== "lobby" && (
+  const fallback = emptyFallback ?? min;
+
+  function commit(raw: string) {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      onChange(fallback);
+      return;
+    }
+    const v = parseInt(trimmed, 10);
+    if (Number.isNaN(v)) {
+      onChange(fallback);
+      return;
+    }
+    onChange(Math.min(max, Math.max(min, v)));
+  }
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <div className="flex h-12 items-stretch overflow-hidden rounded-xl border border-border bg-input">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(min, value - 1))}
+          className="px-4 text-lg font-bold text-muted-foreground hover:bg-secondary hover:text-foreground"
+          aria-label={`Decrease ${label}`}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={focused ? text : String(value)}
+          onFocus={(e) => {
+            setFocused(true);
+            setText(e.target.value);
+          }}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={(e) => {
+            setFocused(false);
+            commit(e.target.value);
+          }}
+          className="w-full bg-transparent text-center text-lg font-bold tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(max, value + 1))}
+          className="px-4 text-lg font-bold text-muted-foreground hover:bg-secondary hover:text-foreground"
+          aria-label={`Increase ${label}`}
+        >
+          +
+        </button>
+      </div>
+      {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+    </label>
+  );
+}
+
+export function ToggleField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string; hint?: string }[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <div className="grid grid-cols-2 gap-2">
+        {options.map((opt) => {
+          const active = opt.value === value;
+          return (
             <button
-              onClick={cancel}
-              className="flex-1 rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs text-primary hover:bg-primary/20"
+              key={opt.value}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
+                active
+                  ? "border-accent bg-accent/10 text-foreground"
+                  : "border-border bg-input text-muted-foreground hover:border-accent/50"
+              }`}
             >
-              Cancel draft
+              <div className="font-semibold">{opt.label}</div>
+              {opt.hint && <div className="text-[11px] text-muted-foreground">{opt.hint}</div>}
             </button>
-          )}
-        </div>
+          );
+        })}
       </div>
     </div>
   );

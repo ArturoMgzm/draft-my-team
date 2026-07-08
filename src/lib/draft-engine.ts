@@ -1,4 +1,5 @@
-import { REG_MB_POOL } from "@/lib/pokemon-pool";
+import type { PokemonSpecies } from "@/lib/pokemon-pool";
+import { getRegulation, DEFAULT_REGULATION_ID } from "@/lib/regulations/registry";
 
 export type DraftEntry = {
   id: string;
@@ -49,6 +50,9 @@ export type Config = {
   useCustomPool?: boolean;
   /** The hand-picked entry ids (only meaningful when useCustomPool). */
   customPool?: string[];
+  /** Which regulation's pool + item list this draft uses. Defaults to the
+   * current regulation when absent (older rooms/configs). */
+  regulation?: string;
 };
 
 export const DEFAULT_CONFIG: Config = {
@@ -64,6 +68,7 @@ export const DEFAULT_CONFIG: Config = {
   allowOverdraft: false,
   startingBudget: 100,
   auctionIncome: 0,
+  regulation: DEFAULT_REGULATION_ID,
 };
 
 const MEGA_FORM_OVERRIDES: Record<string, string> = {
@@ -71,7 +76,24 @@ const MEGA_FORM_OVERRIDES: Record<string, string> = {
   slowbro: "slowbro",
 };
 
-const MEGA_CAPABLE_SPECIES = new Set(REG_MB_POOL.filter((s) => s.mega).map((s) => s.slug));
+// The species pool + mega-capable set now depend on which regulation the
+// config selects, so they're resolved per-call rather than baked into a
+// module-level constant. poolFor is cheap (array lookup) and megaCapableFor
+// is memoized per pool reference so repeated calls in a render don't rebuild
+// the Set.
+function poolFor(cfg: Config): PokemonSpecies[] {
+  return getRegulation(cfg.regulation).pool;
+}
+
+const megaCapableCache = new WeakMap<PokemonSpecies[], Set<string>>();
+function megaCapableFor(pool: PokemonSpecies[]): Set<string> {
+  let set = megaCapableCache.get(pool);
+  if (!set) {
+    set = new Set(pool.filter((s) => s.mega).map((s) => s.slug));
+    megaCapableCache.set(pool, set);
+  }
+  return set;
+}
 
 export function shuffle<T>(arr: T[]): T[] {
   const a = arr.slice();
@@ -82,11 +104,11 @@ export function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function buildBaseEntries(splitForms: boolean): DraftEntry[] {
+function buildBaseEntries(cfg: Config): DraftEntry[] {
   const entries: DraftEntry[] = [];
-  for (const sp of REG_MB_POOL) {
+  for (const sp of poolFor(cfg)) {
     if (sp.forms && sp.forms.length > 0) {
-      if (splitForms) {
+      if (cfg.splitForms) {
         for (const f of sp.forms) {
           entries.push({
             id: `f:${sp.slug}:${f.slug}`,
@@ -120,26 +142,25 @@ function buildBaseEntries(splitForms: boolean): DraftEntry[] {
   return entries;
 }
 
-export function buildNonMegaEntries(splitForms: boolean): DraftEntry[] {
-  return buildBaseEntries(splitForms).filter(
-    (entry) => !MEGA_CAPABLE_SPECIES.has(entry.speciesKey),
-  );
+export function buildNonMegaEntries(cfg: Config): DraftEntry[] {
+  const megaCapable = megaCapableFor(poolFor(cfg));
+  return buildBaseEntries(cfg).filter((entry) => !megaCapable.has(entry.speciesKey));
 }
 
 // Every selectable entry for the custom-pool picker: all non-mega base
 // entries plus every mega-capable entry, in a stable (unshuffled) order.
 // Non-mega bases first, then megas — the same two groups rollPool draws
 // from — so the picker grid reads consistently.
-export function buildAllEntries(splitForms: boolean): DraftEntry[] {
-  return [...buildNonMegaEntries(splitForms), ...buildMegaCapableEntries(splitForms)];
+export function buildAllEntries(cfg: Config): DraftEntry[] {
+  return [...buildNonMegaEntries(cfg), ...buildMegaCapableEntries(cfg)];
 }
 
-export function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
+export function buildMegaCapableEntries(cfg: Config): DraftEntry[] {
   const entries: DraftEntry[] = [];
-  for (const sp of REG_MB_POOL) {
+  for (const sp of poolFor(cfg)) {
     if (!sp.mega) continue;
     let spriteSlug = sp.slug;
-    if (splitForms && sp.forms && sp.forms.length > 0) {
+    if (cfg.splitForms && sp.forms && sp.forms.length > 0) {
       const override = MEGA_FORM_OVERRIDES[sp.slug];
       if (override) spriteSlug = override;
     }
@@ -160,8 +181,8 @@ export function buildMegaCapableEntries(splitForms: boolean): DraftEntry[] {
 export function rollPool(cfg: Config): DraftEntry[] {
   const totalNeeded = cfg.players * 6 + cfg.extras;
   const guaranteedMegas = Math.min(cfg.megas, totalNeeded);
-  const megaPool = shuffle(buildMegaCapableEntries(cfg.splitForms));
-  const nonMegaPool = shuffle(buildNonMegaEntries(cfg.splitForms));
+  const megaPool = shuffle(buildMegaCapableEntries(cfg));
+  const nonMegaPool = shuffle(buildNonMegaEntries(cfg));
   let chosen: DraftEntry[];
   if (cfg.megaMode === "exact") {
     const nonMegas = nonMegaPool.slice(0, totalNeeded - guaranteedMegas);
@@ -185,7 +206,7 @@ export function rollPool(cfg: Config): DraftEntry[] {
 // pool" fixes *which* mons are in play but not the order they're auctioned
 // or drafted in.
 export function buildCustomPool(cfg: Config): DraftEntry[] {
-  const all = new Map(buildAllEntries(cfg.splitForms).map((e) => [e.id, e]));
+  const all = new Map(buildAllEntries(cfg).map((e) => [e.id, e]));
   const chosen: DraftEntry[] = [];
   for (const id of cfg.customPool ?? []) {
     const e = all.get(id);
@@ -222,15 +243,15 @@ export function nextPlayerIndex(pickIdx: number, playerCount: number, order: Pic
   return round % 2 === 0 ? pos : playerCount - 1 - pos;
 }
 
-export function computeMegaMax(splitForms: boolean, totalNeeded: number): number {
-  return Math.min(buildMegaCapableEntries(splitForms).length, totalNeeded);
+export function computeMegaMax(cfg: Config, totalNeeded: number): number {
+  return Math.min(buildMegaCapableEntries(cfg).length, totalNeeded);
 }
 
 export function computeOverCapacity(cfg: Config): boolean {
   const totalNeeded = cfg.players * 6 + cfg.extras;
   const megaNeeded = Math.min(cfg.megas, totalNeeded);
-  const nonMegaAvailable = buildNonMegaEntries(cfg.splitForms).length;
-  const megaAvailable = buildMegaCapableEntries(cfg.splitForms).length;
+  const nonMegaAvailable = buildNonMegaEntries(cfg).length;
+  const megaAvailable = buildMegaCapableEntries(cfg).length;
   if (megaNeeded > megaAvailable) return true;
   if (cfg.megaMode === "exact") {
     return totalNeeded - megaNeeded > nonMegaAvailable;
