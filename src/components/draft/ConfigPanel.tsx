@@ -1,4 +1,5 @@
 import { PoolPicker } from "./PoolPicker";
+import { DEFAULT_REGULATION_ID, REGULATIONS } from "@/lib/regulations/registry";
 import {
   type Config,
   type DraftMode,
@@ -35,7 +36,7 @@ export function ConfigPanel({
   multiplayer?: boolean;
 }) {
   const totalNeeded = cfg.players * 6 + cfg.extras;
-  const megaMax = computeMegaMax(cfg.splitForms, totalNeeded);
+  const megaMax = computeMegaMax(cfg, totalNeeded);
   const overCapacity = computeOverCapacity(cfg);
   const isAuction = multiplayer && (cfg.draftMode ?? "standard") === "auction";
 
@@ -51,6 +52,48 @@ export function ConfigPanel({
           Shared pool of {totalNeeded} Pokémon ({cfg.players * 6} slots + {cfg.extras} extras).
         </p>
       </div>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Regulation
+        </span>
+        <select
+          disabled={readonly}
+          value={cfg.regulation ?? DEFAULT_REGULATION_ID}
+          onChange={(e) => {
+            const regulation = e.target.value;
+            setCfg((c) => ({
+              // A custom pool holds entry ids from the old regulation, which
+              // may not exist in the new one — clear it so the picker starts
+              // fresh rather than silently carrying invalid selections.
+              ...c,
+              regulation,
+              customPool: c.regulation === regulation ? c.customPool : [],
+            }));
+          }}
+          className="h-11 rounded-xl border border-border bg-input px-3 text-sm font-semibold outline-none"
+        >
+          <optgroup label="Current">
+            {REGULATIONS.filter((r) => r.status === "current").map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.longName}
+              </option>
+            ))}
+          </optgroup>
+          {REGULATIONS.some((r) => r.status === "legacy") && (
+            <optgroup label="Past regulations">
+              {REGULATIONS.filter((r) => r.status === "legacy").map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.longName}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+        <span className="text-[11px] text-muted-foreground">
+          Past regulations stay available to replay anytime.
+        </span>
+      </label>
 
       <fieldset disabled={readonly} className="grid gap-4 sm:grid-cols-2">
         <NumberField
