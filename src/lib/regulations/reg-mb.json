@@ -428,18 +428,8 @@
       "slug": "flareon"
     },
     {
-      "name": "Floette",
-      "slug": "floette",
-      "forms": [
-        {
-          "name": "Floette",
-          "slug": "floette"
-        },
-        {
-          "name": "Floette (Eternal)",
-          "slug": "floette-eternal"
-        }
-      ],
+      "name": "Floette (Eternal)",
+      "slug": "floette-eternal",
       "mega": {
         "name": "Mega Floette",
         "slug": "floette-mega"
