@@ -17,7 +17,14 @@ export function PoolPicker({
   readonly?: boolean;
 }) {
   const totalNeeded = cfg.players * 6 + cfg.extras;
-  const allEntries = useMemo(() => buildAllEntries(cfg.splitForms), [cfg.splitForms]);
+  // buildAllEntries only reads splitForms + regulation from cfg; depend on
+  // exactly those so the grid rebuilds when either changes (and no more).
+  const { splitForms, regulation } = cfg;
+  const allEntries = useMemo(
+    () => buildAllEntries({ ...cfg, splitForms, regulation }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [splitForms, regulation],
+  );
   const selected = useMemo(() => new Set(cfg.customPool ?? []), [cfg.customPool]);
   const [query, setQuery] = useState("");
   const [megaOnly, setMegaOnly] = useState(false);
@@ -69,7 +76,7 @@ export function PoolPicker({
       const cur = c.customPool ?? [];
       if (cur.length >= need) return c;
       const curSet = new Set(cur);
-      const pool = buildAllEntries(c.splitForms).filter((e) => !curSet.has(e.id));
+      const pool = buildAllEntries(c).filter((e) => !curSet.has(e.id));
       for (let i = pool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
