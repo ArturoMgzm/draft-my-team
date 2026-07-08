@@ -471,7 +471,12 @@ function SoloDraft({ onExit }: { onExit: () => void }) {
           }
         />
       </div>
-      <CalcSidebar pool={pool} open={calcOpen} onClose={() => setCalcOpen(false)} />
+      <CalcSidebar
+        pool={pool}
+        regulationId={cfg.regulation}
+        open={calcOpen}
+        onClose={() => setCalcOpen(false)}
+      />
     </div>
   );
 }
