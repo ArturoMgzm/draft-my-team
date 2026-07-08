@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { getFormOptions, type DraftEntry } from "@/lib/draft-engine";
 import {
   fetchItem,
@@ -37,7 +45,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CHAMPIONS_ITEMS } from "@/lib/champions-items";
+import { type ItemGroup } from "@/lib/champions-items";
+import { getRegulation, DEFAULT_REGULATION_ID } from "@/lib/regulations/registry";
 
 type SideKey = "atk" | "def";
 
@@ -106,22 +115,28 @@ const SIDE_ACCENT: Record<SideKey, SideAccentStyle> = {
   },
 };
 
+const ItemsContext = createContext<ItemGroup[]>(getRegulation(DEFAULT_REGULATION_ID).items);
+
 export function CalcSidebar({
   pool,
   open,
   onClose,
+  regulationId,
 }: {
   pool: DraftEntry[];
   open: boolean;
   onClose: () => void;
+  /** Which regulation's item list to offer. Defaults to the current one. */
+  regulationId?: string;
 }) {
+  const items = getRegulation(regulationId).items;
   const [mode, setMode] = useState<"calc" | "speed">("calc");
   const [atk, setAtk] = useState<SideDraft>(EMPTY_SIDE);
   const [def, setDef] = useState<SideDraft>(EMPTY_SIDE);
   const [field, setField] = useState<FieldConfig>(DEFAULT_FIELD);
 
   return (
-    <>
+    <ItemsContext.Provider value={items}>
       <div
         className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] transition-opacity ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
@@ -207,7 +222,7 @@ export function CalcSidebar({
           <SpeedTiersView pool={pool} />
         )}
       </aside>
-    </>
+    </ItemsContext.Provider>
   );
 }
 
@@ -1025,6 +1040,7 @@ function useItemSprite(name: string): ItemData | null {
 const NONE_ITEM = "__none__";
 
 function ItemPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const itemGroups = useContext(ItemsContext);
   return (
     <label className="flex flex-col gap-0.5">
       <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -1039,7 +1055,7 @@ function ItemPicker({ value, onChange }: { value: string; onChange: (v: string) 
           <SelectItem value={NONE_ITEM} className="text-[11px]">
             None
           </SelectItem>
-          {CHAMPIONS_ITEMS.map((g) => (
+          {itemGroups.map((g) => (
             <SelectGroup key={g.label}>
               <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {g.label}
