@@ -64,6 +64,8 @@ export type ItemData = {
 // an explicit override below.
 const ITEM_SLUG_OVERRIDES: Record<string, string> = {
   NeverMeltIce: "never-melt-ice",
+  // PokeAPI still files the Leek under its pre-Gen-8 name, "stick".
+  Leek: "stick",
 };
 
 export function itemNameToSlug(name: string): string {
@@ -161,7 +163,7 @@ export function fetchMoveInfo(slug: string): Promise<MoveInfo | null> {
 // for every alt-form entry yet, so when a Mega slug comes back with an
 // empty moves list, this falls back to the base species' moves — which is
 // mechanically correct, not just a workaround.
-const MEGA_SUFFIX_RE = /-mega(-x|-y)?$/;
+const MEGA_SUFFIX_RE = /-mega(-x|-y|-z)?$/;
 
 function baseSlugForMega(slug: string): string | null {
   if (!MEGA_SUFFIX_RE.test(slug)) return null;

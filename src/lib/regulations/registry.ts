@@ -25,10 +25,14 @@
 //   2. Import it and add it to MANIFESTS below.
 //   3. Flip the previous "current" entry's "status" to "legacy" in its JSON
 //      if it's been superseded.
-// Nothing else in the app needs to change.
+// Nothing else in the app *needs* to change — everything that renders a
+// regulation reads it from here. The one exception is the static SEO/
+// marketing copy in src/routes/__root.tsx and src/routes/index.tsx, which
+// names the current regulation in prose and has to be updated by hand.
 
 import type { ItemGroup } from "@/lib/champions-items";
 import type { PokemonSpecies } from "@/lib/pokemon-pool";
+import regMcJson from "@/lib/regulations/reg-mc.json";
 import regMbJson from "@/lib/regulations/reg-mb.json";
 import regMaJson from "@/lib/regulations/reg-ma.json";
 
@@ -55,7 +59,7 @@ export type Regulation = {
 // (JSON can't carry TS literal types, so `status` widens to string on
 // import — the cast re-narrows it. Keep each JSON "status" to exactly
 // "current" | "legacy".)
-const MANIFESTS = [regMbJson, regMaJson] as unknown as Regulation[];
+const MANIFESTS = [regMcJson, regMbJson, regMaJson] as unknown as Regulation[];
 
 // Order matters: earlier entries render first within their status group.
 // The first "current" regulation is the app-wide default (see

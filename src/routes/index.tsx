@@ -22,16 +22,16 @@ import { applyRoomAction, generateRoomCode, getDeviceId } from "@/lib/room-clien
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Champions Draft — Reg M-B Randomizer" },
+      { title: "Champions Draft — Reg M-C Randomizer" },
       {
         name: "description",
         content:
-          "Shared-pool draft tool for Champions Regulation M-B. Solo or multiplayer rooms with sort, filter, and configurable mega counts.",
+          "Shared-pool draft tool for Champions Regulation M-C. Solo or multiplayer rooms with sort, filter, and configurable mega counts.",
       },
       { property: "og:title", content: "Champions Draft" },
       {
         property: "og:description",
-        content: "Turn-based shared-pool drafting for Reg M-B — solo or multiplayer.",
+        content: "Turn-based shared-pool drafting for Reg M-C — solo or multiplayer.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:title", content: "Champions Draft" },
@@ -62,7 +62,7 @@ function Page() {
               <span className="text-primary">Champions</span> Draft
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Shared-pool drafting · Regulation M-B
+              Shared-pool drafting · Regulation M-C
             </p>
           </button>
           <div className="flex items-center gap-3">

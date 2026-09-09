@@ -77,17 +77,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Champions Draft Helper — Reg M-B Draft Randomizer" },
+      { title: "Champions Draft Helper — Reg M-C Draft Randomizer" },
       {
         name: "description",
         content:
-          "Unofficial fan-made shared-pool draft randomizer for Pokémon Champions Regulation M-B. Configure players, megas, and form rules, then draft turn by turn.",
+          "Unofficial fan-made shared-pool draft randomizer for Pokémon Champions Regulation M-C. Configure players, megas, and form rules, then draft turn by turn.",
       },
       { property: "og:site_name", content: "Pokémon Champions Draft" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { property: "og:title", content: "Champions Draft Helper — Reg M-B Draft Randomizer" },
-      { name: "twitter:title", content: "Champions Draft Helper — Reg M-B Draft Randomizer" },
+      { property: "og:title", content: "Champions Draft Helper — Reg M-C Draft Randomizer" },
+      { name: "twitter:title", content: "Champions Draft Helper — Reg M-C Draft Randomizer" },
       { name: "description", content: "An unofficial fan-made draft assistant for Champions." },
       { property: "og:description", content: "An unofficial fan-made draft assistant for Champions." },
       { name: "twitter:description", content: "An unofficial fan-made draft assistant for Champions." },

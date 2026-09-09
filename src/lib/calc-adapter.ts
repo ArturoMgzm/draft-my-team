@@ -112,6 +112,8 @@ const SPECIES_OVERRIDES: Record<string, string> = {
   // testing every species/form/mega slug in the pool against the real
   // calc engine end to end (not just spot-checking the reported ones).
   "gourgeist-average": "Gourgeist",
+  "indeedee-male": "Indeedee",
+  "indeedee-female": "Indeedee-F",
   "lycanroc-midday": "Lycanroc",
   "maushold-family-of-four": "Maushold-Four",
   "maushold-family-of-three": "Maushold",
@@ -123,9 +125,14 @@ const SPECIES_OVERRIDES: Record<string, string> = {
   "morpeko-full-belly": "Morpeko",
   "palafin-zero": "Palafin",
   "pyroar-male": "Pyroar",
+  "squawkabilly-green-plumage": "Squawkabilly",
+  "squawkabilly-blue-plumage": "Squawkabilly-Blue",
+  "squawkabilly-yellow-plumage": "Squawkabilly-Yellow",
+  "squawkabilly-white-plumage": "Squawkabilly-White",
   "tauros-paldea-combat-breed": "Tauros-Paldea-Combat",
   "tauros-paldea-blaze-breed": "Tauros-Paldea-Blaze",
   "tauros-paldea-aqua-breed": "Tauros-Paldea-Aqua",
+  "toxtricity-amped": "Toxtricity",
 };
 
 function titleCasePart(s: string): string {

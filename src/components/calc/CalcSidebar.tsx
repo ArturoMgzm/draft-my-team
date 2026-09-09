@@ -129,7 +129,8 @@ export function CalcSidebar({
   /** Which regulation's item list to offer. Defaults to the current one. */
   regulationId?: string;
 }) {
-  const items = getRegulation(regulationId).items;
+  const regulation = getRegulation(regulationId);
+  const items = regulation.items;
   const [mode, setMode] = useState<"calc" | "speed">("calc");
   const [atk, setAtk] = useState<SideDraft>(EMPTY_SIDE);
   const [def, setDef] = useState<SideDraft>(EMPTY_SIDE);
@@ -155,9 +156,7 @@ export function CalcSidebar({
             <h2 className="text-sm font-bold tracking-tight">
               {mode === "calc" ? "Damage Calculator" : "Speed Tiers"}
             </h2>
-            <p className="text-[10px] text-muted-foreground">
-              Champions Reg M-B · Level 50 · Doubles · No Tera (not yet playable)
-            </p>
+            <p className="text-[10px] text-muted-foreground">{regulation.formatLabel}</p>
           </div>
           <div className="flex items-center gap-2">
             {mode === "calc" && (

@@ -1,9 +1,9 @@
 {
-  "id": "reg-mb",
-  "name": "Reg M-B",
-  "longName": "Regulation M-B",
-  "formatLabel": "Champions Reg M-B · Level 50 · Doubles · No Tera (not yet playable)",
-  "status": "legacy",
+  "id": "reg-mc",
+  "name": "Reg M-C",
+  "longName": "Regulation M-C",
+  "formatLabel": "Champions Reg M-C · Level 50 · Doubles · No Tera (not yet playable)",
+  "status": "current",
   "pool": [
     {
       "name": "Abomasnow",
@@ -19,7 +19,13 @@
       "mega": {
         "name": "Mega Absol",
         "slug": "absol-mega"
-      }
+      },
+      "altMegas": [
+        {
+          "name": "Mega Absol Z",
+          "slug": "absol-mega-z"
+        }
+      ]
     },
     {
       "name": "Aegislash",
@@ -84,6 +90,10 @@
     {
       "name": "Arbok",
       "slug": "arbok"
+    },
+    {
+      "name": "Arboliva",
+      "slug": "arboliva"
     },
     {
       "name": "Arcanine",
@@ -180,6 +190,14 @@
       "slug": "bastiodon"
     },
     {
+      "name": "Baxcalibur",
+      "slug": "baxcalibur",
+      "mega": {
+        "name": "Mega Baxcalibur",
+        "slug": "baxcalibur-mega"
+      }
+    },
+    {
       "name": "Beartic",
       "slug": "beartic"
     },
@@ -264,6 +282,10 @@
         "name": "Mega Chimecho",
         "slug": "chimecho-mega"
       }
+    },
+    {
+      "name": "Cinderace",
+      "slug": "cinderace"
     },
     {
       "name": "Clawitzer",
@@ -408,6 +430,10 @@
       }
     },
     {
+      "name": "Farfetch'd",
+      "slug": "farfetchd"
+    },
+    {
       "name": "Farigiraf",
       "slug": "farigiraf"
     },
@@ -473,7 +499,13 @@
       "mega": {
         "name": "Mega Garchomp",
         "slug": "garchomp-mega"
-      }
+      },
+      "altMegas": [
+        {
+          "name": "Mega Garchomp Z",
+          "slug": "garchomp-mega-z"
+        }
+      ]
     },
     {
       "name": "Gardevoir",
@@ -524,6 +556,18 @@
       "slug": "gliscor"
     },
     {
+      "name": "Gogoat",
+      "slug": "gogoat"
+    },
+    {
+      "name": "Golisopod",
+      "slug": "golisopod",
+      "mega": {
+        "name": "Mega Golisopod",
+        "slug": "golisopod-mega"
+      }
+    },
+    {
       "name": "Golurk",
       "slug": "golurk",
       "mega": {
@@ -538,6 +582,10 @@
     {
       "name": "Gourgeist",
       "slug": "gourgeist-average"
+    },
+    {
+      "name": "Grapploct",
+      "slug": "grapploct"
     },
     {
       "name": "Greninja",
@@ -612,8 +660,26 @@
       "slug": "incineroar"
     },
     {
+      "name": "Indeedee",
+      "slug": "indeedee-female",
+      "forms": [
+        {
+          "name": "Indeedee (Male)",
+          "slug": "indeedee-male"
+        },
+        {
+          "name": "Indeedee (Female)",
+          "slug": "indeedee-female"
+        }
+      ]
+    },
+    {
       "name": "Infernape",
       "slug": "infernape"
+    },
+    {
+      "name": "Inteleon",
+      "slug": "inteleon"
     },
     {
       "name": "Jolteon",
@@ -669,7 +735,13 @@
       "mega": {
         "name": "Mega Lucario",
         "slug": "lucario-mega"
-      }
+      },
+      "altMegas": [
+        {
+          "name": "Mega Lucario Z",
+          "slug": "lucario-mega-z"
+        }
+      ]
     },
     {
       "name": "Luxray",
@@ -692,6 +764,10 @@
           "slug": "lycanroc-dusk"
         }
       ]
+    },
+    {
+      "name": "Mabosstiff",
+      "slug": "mabosstiff"
     },
     {
       "name": "Machamp",
@@ -788,6 +864,10 @@
       "slug": "morpeko-full-belly"
     },
     {
+      "name": "Mr. Mime",
+      "slug": "mr-mime"
+    },
+    {
       "name": "Mr. Rime",
       "slug": "mr-rime"
     },
@@ -842,12 +922,26 @@
       "slug": "passimian"
     },
     {
-      "name": "Watchog",
-      "slug": "watchog"
-    },
-    {
       "name": "Pelipper",
       "slug": "pelipper"
+    },
+    {
+      "name": "Perrserker",
+      "slug": "perrserker"
+    },
+    {
+      "name": "Persian",
+      "slug": "persian",
+      "forms": [
+        {
+          "name": "Persian (Kantonian)",
+          "slug": "persian"
+        },
+        {
+          "name": "Persian (Alolan)",
+          "slug": "persian-alola"
+        }
+      ]
     },
     {
       "name": "Pidgeot",
@@ -860,6 +954,10 @@
     {
       "name": "Pikachu",
       "slug": "pikachu"
+    },
+    {
+      "name": "Pincurchin",
+      "slug": "pincurchin"
     },
     {
       "name": "Pinsir",
@@ -934,6 +1032,10 @@
       "slug": "rhyperior"
     },
     {
+      "name": "Rillaboom",
+      "slug": "rillaboom"
+    },
+    {
       "name": "Roserade",
       "slug": "roserade"
     },
@@ -977,6 +1079,14 @@
       "mega": {
         "name": "Mega Sableye",
         "slug": "sableye-mega"
+      }
+    },
+    {
+      "name": "Salamence",
+      "slug": "salamence",
+      "mega": {
+        "name": "Mega Salamence",
+        "slug": "salamence-mega"
       }
     },
     {
@@ -1070,6 +1180,10 @@
       "slug": "sinistcha"
     },
     {
+      "name": "Sirfetch'd",
+      "slug": "sirfetchd"
+    },
+    {
       "name": "Skarmory",
       "slug": "skarmory",
       "mega": {
@@ -1130,6 +1244,20 @@
       "slug": "spiritomb"
     },
     {
+      "name": "Squawkabilly",
+      "slug": "squawkabilly-green-plumage",
+      "forms": [
+        {
+          "name": "Squawkabilly (Green)",
+          "slug": "squawkabilly-green-plumage"
+        },
+        {
+          "name": "Squawkabilly (Yellow)",
+          "slug": "squawkabilly-yellow-plumage"
+        }
+      ]
+    },
+    {
       "name": "Staraptor",
       "slug": "staraptor",
       "mega": {
@@ -1166,6 +1294,10 @@
           "slug": "stunfisk-galar"
         }
       ]
+    },
+    {
+      "name": "Swalot",
+      "slug": "swalot"
     },
     {
       "name": "Swampert",
@@ -1206,6 +1338,10 @@
       ]
     },
     {
+      "name": "Thievul",
+      "slug": "thievul"
+    },
+    {
       "name": "Tinkaton",
       "slug": "tinkaton"
     },
@@ -1228,6 +1364,20 @@
     {
       "name": "Toxicroak",
       "slug": "toxicroak"
+    },
+    {
+      "name": "Toxtricity",
+      "slug": "toxtricity-amped",
+      "forms": [
+        {
+          "name": "Toxtricity (Amped)",
+          "slug": "toxtricity-amped"
+        },
+        {
+          "name": "Toxtricity (Low Key)",
+          "slug": "toxtricity-low-key"
+        }
+      ]
     },
     {
       "name": "Trevenant",
@@ -1304,12 +1454,20 @@
       "slug": "volcarona"
     },
     {
+      "name": "Watchog",
+      "slug": "watchog"
+    },
+    {
       "name": "Weavile",
       "slug": "weavile"
     },
     {
       "name": "Whimsicott",
       "slug": "whimsicott"
+    },
+    {
+      "name": "Wigglytuff",
+      "slug": "wigglytuff"
     },
     {
       "name": "Wyrdeer",
@@ -1340,7 +1498,9 @@
         "Muscle Band",
         "Wise Glasses",
         "Metronome",
-        "Light Ball"
+        "Light Ball",
+        "Normal Gem",
+        "Leek"
       ]
     },
     {
@@ -1399,7 +1559,12 @@
         "Bright Powder",
         "Quick Claw",
         "Iron Ball",
-        "Shed Shell"
+        "Shed Shell",
+        "Rocky Helmet",
+        "Air Balloon",
+        "Red Card",
+        "Eject Button",
+        "Binding Band"
       ]
     },
     {
@@ -1408,7 +1573,12 @@
         "Damp Rock",
         "Heat Rock",
         "Icy Rock",
-        "Smooth Rock"
+        "Smooth Rock",
+        "Terrain Extender",
+        "Electric Seed",
+        "Psychic Seed",
+        "Misty Seed",
+        "Grassy Seed"
       ]
     },
     {
