@@ -155,6 +155,19 @@ export function AuctionDraft({
   const folded = auction.folded ?? [];
   const iHaveFolded = folded.includes(selfId);
   const amTopBidder = bidder === selfId && bid > 0;
+  const pendingSwapOpen = !!pendingSwap;
+
+  // How many players could still raise this bid — folded, broke and
+  // full-team seats don't count. Without it you can't tell a one-horse race
+  // from a room that's about to jump on you at 0:02.
+  // (Plain filter over at most 8 seats — memoizing it would cost more than
+  // it saves, and `money`/`folded` are fresh objects on every render.)
+  const contenders = orderedIds.filter((pid) => {
+    if (bid > 0 && pid === bidder) return false;
+    if (folded.includes(pid)) return false;
+    if ((teamCounts.get(pid) ?? 0) >= 6 && !allowOverdraft) return false;
+    return (money[pid] ?? 0) > bid;
+  }).length;
 
   const [err, setErr] = useState<string | null>(null);
   const [customBid, setCustomBid] = useState("");
@@ -230,6 +243,7 @@ export function AuctionDraft({
   const canFold =
     !!current && !pendingSwap && !roulette && !iHaveFolded && !amTopBidder && secondsLeft > 0;
   const rouletteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevSeq = useRef(seq);
   useEffect(() => {
     if (seq === prevSeq.current) return;
@@ -256,8 +270,17 @@ export function AuctionDraft({
       const candidates = (room.player_order ?? [])
         .filter(Boolean)
         .filter((pid) => (counts.get(pid) ?? 0) < 6);
+      // Acking opens the next mon *and* starts its 10s window for the whole
+      // room, so whoever acks first decides when everyone else's clock
+      // starts. Let the host's wheel drive that — other clients ack only as
+      // a fallback a beat later, in case the host dropped mid-reveal — and
+      // pair it with the overlay teardown below so no one is ever still
+      // watching the wheel while a live auction burns down.
       const ackReveal = () => {
-        void applyRoomAction(room.code, selfId, { type: "ack_reveal" }).catch(() => {});
+        const wait = isHost ? 0 : 1500 + Math.random() * 700;
+        ackTimerRef.current = setTimeout(() => {
+          void applyRoomAction(room.code, selfId, { type: "ack_reveal" }).catch(() => {});
+        }, wait);
       };
 
       // Only one possible recipient → no suspense to build, skip the spin.
@@ -299,9 +322,62 @@ export function AuctionDraft({
   useEffect(
     () => () => {
       if (rouletteTimerRef.current) clearTimeout(rouletteTimerRef.current);
+      if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
     },
     [],
   );
+
+  // The server opens the next mon the instant the reveal is acked, so the
+  // moment pending_reveal clears the wheel has to go — a leftover overlay
+  // blocks bidding (canBid checks `roulette`) and would quietly eat the new
+  // mon's clock on any client whose animation ran a little behind.
+  useEffect(() => {
+    if (pendingReveal) return;
+    if (rouletteTimerRef.current) {
+      clearTimeout(rouletteTimerRef.current);
+      rouletteTimerRef.current = null;
+    }
+    if (ackTimerRef.current) {
+      clearTimeout(ackTimerRef.current);
+      ackTimerRef.current = null;
+    }
+    setRoulette((r) => (r ? null : r));
+  }, [pendingReveal]);
+
+  // Safety net: the auction parks in pending_reveal until someone acks, so
+  // if every client that saw the wheel closed its tab (or had its timers
+  // throttled into oblivion) the draft would sit there forever.
+  useEffect(() => {
+    if (!pendingReveal) return;
+    const id = setTimeout(() => {
+      void applyRoomAction(room.code, selfId, { type: "ack_reveal" }).catch(() => {});
+    }, 12000);
+    return () => clearTimeout(id);
+  }, [pendingReveal, room.code, selfId]);
+
+  // ---- Auto-fold when you can't afford to stay in ----
+  // A player who can't reach bid + 1 has no move left, but the server still
+  // counts them as live, so a dead auction burns its whole clock waiting on
+  // someone who can't act. Each client folds *itself* (the same action the
+  // Fold button sends), so once the last player with money bows out the
+  // server sees active_bidders = 0 and ends the auction on the spot.
+  const cantAfford = !!current && !iHaveFolded && !amTopBidder && myMoney <= bid;
+  const autoFoldRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!cantAfford || !currentId || pendingSwapOpen || pendingReveal) return;
+    if (autoFoldRef.current === currentId) return;
+    // Small delay so we act on a settled state — a new mon's money and bid
+    // reset can arrive in separate realtime updates, and folding off the
+    // in-between frame would drop someone who can still afford to play.
+    const id = setTimeout(() => {
+      autoFoldRef.current = currentId;
+      void applyRoomAction(room.code, selfId, { type: "fold" }).catch(() => {
+        // Let a later render retry (e.g. we briefly held the top bid).
+        autoFoldRef.current = null;
+      });
+    }, 600);
+    return () => clearTimeout(id);
+  }, [cantAfford, currentId, pendingSwapOpen, pendingReveal, room.code, selfId]);
 
   // ---- Resolve scheduling (idempotent server-side) ----
   useEffect(() => {
@@ -445,10 +521,15 @@ export function AuctionDraft({
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className="text-[10px] text-muted-foreground">
                   {iHaveFolded
-                    ? "You folded — out until the next mon."
+                    ? myMoney <= bid
+                      ? "Out of money for this one — folded automatically."
+                      : "You folded — out until the next mon."
                     : amTopBidder
                       ? "You hold the top bid."
                       : "Not interested? Fold to speed things up."}
+                </span>
+                <span className="ml-auto whitespace-nowrap text-[10px] text-muted-foreground">
+                  {contenders === 0 ? "nobody else can bid" : `${contenders} still able to bid`}
                 </span>
                 <button
                   type="button"
