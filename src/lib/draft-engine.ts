@@ -45,11 +45,16 @@ export type Config = {
    * after every mon resolves. 0 disables. Prevents perma-broke players and
    * stops overdrafters stalling the game forever. */
   auctionIncome?: number;
-  /** When set, the pool is hand-picked from these entry ids rather than
-   * rolled randomly. Order is still shuffled at draft start. */
+  /** Curated-pool mode: guaranteed picks and bans shape the roll instead of
+   * it being purely random. Order is still shuffled at draft start. */
   useCustomPool?: boolean;
-  /** The hand-picked entry ids (only meaningful when useCustomPool). */
+  /** Entry ids guaranteed to be in the pool (only meaningful when
+   * useCustomPool). Anything short of the full pool size is filled in
+   * randomly at draft start. */
   customPool?: string[];
+  /** Entry ids that can never be rolled (only meaningful when
+   * useCustomPool). Guarantees win if an id somehow lands in both. */
+  bannedPool?: string[];
   /** Which regulation's pool + item list this draft uses. Defaults to the
    * current regulation when absent (older rooms/configs). */
   regulation?: string;
@@ -178,56 +183,92 @@ export function buildMegaCapableEntries(cfg: Config): DraftEntry[] {
   return entries;
 }
 
-export function rollPool(cfg: Config): DraftEntry[] {
-  const totalNeeded = cfg.players * 6 + cfg.extras;
-  const guaranteedMegas = Math.min(cfg.megas, totalNeeded);
-  const megaPool = shuffle(buildMegaCapableEntries(cfg));
-  const nonMegaPool = shuffle(buildNonMegaEntries(cfg));
+// Draws `need` random entries, skipping anything in `exclude` and aiming for
+// `megaTarget` megas among them. Shared by the pure-random roll and by the
+// random fill that tops up a curated pool, so both obey the same mega rules.
+function drawRandom(
+  cfg: Config,
+  need: number,
+  exclude: Set<string>,
+  megaTarget: number,
+): DraftEntry[] {
+  if (need <= 0) return [];
+  const megaPool = shuffle(buildMegaCapableEntries(cfg).filter((e) => !exclude.has(e.id)));
+  const nonMegaPool = shuffle(buildNonMegaEntries(cfg).filter((e) => !exclude.has(e.id)));
+  const megas = Math.max(0, Math.min(megaTarget, need));
   let chosen: DraftEntry[];
+  let leftovers: DraftEntry[];
   if (cfg.megaMode === "exact") {
-    const nonMegas = nonMegaPool.slice(0, totalNeeded - guaranteedMegas);
-    const megas = megaPool.slice(0, guaranteedMegas);
-    chosen = [...nonMegas, ...megas];
+    chosen = [...nonMegaPool.slice(0, need - megas), ...megaPool.slice(0, megas)];
+    leftovers = [...nonMegaPool.slice(need - megas), ...megaPool.slice(megas)];
   } else {
-    const lockedMegas = megaPool.slice(0, guaranteedMegas);
-    const rest = shuffle([...megaPool.slice(guaranteedMegas), ...nonMegaPool]).slice(
-      0,
-      totalNeeded - guaranteedMegas,
-    );
-    chosen = [...lockedMegas, ...rest];
+    const lockedMegas = megaPool.slice(0, megas);
+    const rest = shuffle([...megaPool.slice(megas), ...nonMegaPool]);
+    chosen = [...lockedMegas, ...rest.slice(0, need - megas)];
+    leftovers = rest.slice(need - megas);
   }
-  chosen = chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 4096 }));
-  return shuffle(chosen);
+  // One group can run dry (a narrow regulation, or lots of bans) — top up
+  // from whatever is left rather than handing back a short pool.
+  if (chosen.length < need) chosen = [...chosen, ...leftovers.slice(0, need - chosen.length)];
+  return chosen;
 }
 
-// Builds the draft pool from a hand-picked set of entry ids (custom pool
-// mode). Resolves each id against the full entry list, applies the same
-// per-entry shiny roll rollPool uses, and shuffles the order — so "custom
-// pool" fixes *which* mons are in play but not the order they're auctioned
-// or drafted in.
-export function buildCustomPool(cfg: Config): DraftEntry[] {
+export function rollPool(cfg: Config): DraftEntry[] {
+  const totalNeeded = cfg.players * 6 + cfg.extras;
+  const chosen = drawRandom(cfg, totalNeeded, new Set(), Math.min(cfg.megas, totalNeeded));
+  return shuffle(chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 4096 })));
+}
+
+// Ids the config bans. Bans only apply in curated-pool mode — a leftover
+// ban list shouldn't quietly shrink a plain random roll.
+export function bannedIds(cfg: Config): Set<string> {
+  return new Set(cfg.useCustomPool ? (cfg.bannedPool ?? []) : []);
+}
+
+// The guaranteed entries a curated pool starts from: the hand-picked ids,
+// resolved, de-duped, bans dropped, capped at the pool size.
+export function guaranteedEntries(cfg: Config): DraftEntry[] {
   const all = new Map(buildAllEntries(cfg).map((e) => [e.id, e]));
-  const chosen: DraftEntry[] = [];
+  const banned = bannedIds(cfg);
+  const seen = new Set<string>();
+  const out: DraftEntry[] = [];
   for (const id of cfg.customPool ?? []) {
+    if (seen.has(id) || banned.has(id)) continue;
     const e = all.get(id);
-    if (e) chosen.push({ ...e, shiny: Math.random() < 1 / 4096 });
+    if (!e) continue;
+    seen.add(id);
+    out.push(e);
   }
-  return shuffle(chosen);
+  return out.slice(0, cfg.players * 6 + cfg.extras);
+}
+
+// Builds the draft pool in curated mode: every guaranteed pick is in, every
+// banned entry is out, and the slots left over are rolled randomly. Megas
+// already guaranteed count against the mega quota, so guaranteeing two megas
+// with `megas: 2` doesn't hand you four. Applies the same per-entry shiny
+// roll rollPool uses and shuffles the order, so curating fixes *which* mons
+// are in play but never the order they're drafted or auctioned in.
+export function buildCustomPool(cfg: Config): DraftEntry[] {
+  const totalNeeded = cfg.players * 6 + cfg.extras;
+  const locked = guaranteedEntries(cfg);
+  const exclude = new Set([...bannedIds(cfg), ...locked.map((e) => e.id)]);
+  const lockedMegas = locked.filter((e) => e.isMega).length;
+  const fill = drawRandom(
+    cfg,
+    totalNeeded - locked.length,
+    exclude,
+    Math.min(cfg.megas, totalNeeded) - lockedMegas,
+  );
+  const chosen = [...locked, ...fill];
+  return shuffle(chosen.map((e) => ({ ...e, shiny: Math.random() < 1 / 4096 })));
 }
 
 // The single entry point every "start the draft" path uses to build a pool:
-// the hand-picked custom pool when custom-pool mode is on, a fresh random
-// roll otherwise. Going through here is what keeps a host's hand-picked
-// selection from being silently replaced by a random roll at start.
+// the curated pool when curated mode is on, a plain random roll otherwise.
+// Going through here is what keeps a host's guarantees and bans from being
+// silently replaced by a random roll at start.
 export function makePool(cfg: Config): DraftEntry[] {
   return cfg.useCustomPool ? buildCustomPool(cfg) : rollPool(cfg);
-}
-
-// True when custom-pool mode is on but fewer mons are picked than the draft
-// needs — starting then would leave the draft impossible to finish.
-export function customPoolIncomplete(cfg: Config): boolean {
-  if (!cfg.useCustomPool) return false;
-  return (cfg.customPool?.length ?? 0) < cfg.players * 6 + cfg.extras;
 }
 
 // Every viewable form for an entry, base form first. For non-mega/non-multi
@@ -265,8 +306,10 @@ export function computeMegaMax(cfg: Config, totalNeeded: number): number {
 export function computeOverCapacity(cfg: Config): boolean {
   const totalNeeded = cfg.players * 6 + cfg.extras;
   const megaNeeded = Math.min(cfg.megas, totalNeeded);
-  const nonMegaAvailable = buildNonMegaEntries(cfg).length;
-  const megaAvailable = buildMegaCapableEntries(cfg).length;
+  // Bans shrink what's rollable, so they can push a config over capacity.
+  const banned = bannedIds(cfg);
+  const nonMegaAvailable = buildNonMegaEntries(cfg).filter((e) => !banned.has(e.id)).length;
+  const megaAvailable = buildMegaCapableEntries(cfg).filter((e) => !banned.has(e.id)).length;
   if (megaNeeded > megaAvailable) return true;
   if (cfg.megaMode === "exact") {
     return totalNeeded - megaNeeded > nonMegaAvailable;

@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { applyRoomAction, type RoomPlayerRow, type RoomRow } from "@/lib/room-client";
 import { ConfigPanel } from "./ConfigPanel";
-import {
-  type Config,
-  computeOverCapacity,
-  customPoolIncomplete,
-  makePool,
-  shuffle,
-} from "@/lib/draft-engine";
+import { type Config, computeOverCapacity, makePool, shuffle } from "@/lib/draft-engine";
 import { playShinyChime } from "@/lib/shiny-sound";
 
 export function Lobby({
@@ -121,9 +115,7 @@ export function Lobby({
     ? "Need at least 2 players"
     : overCapacity
       ? "Pool too large"
-      : customPoolIncomplete(room.config)
-        ? "Custom pool incomplete"
-        : null;
+      : null;
 
   return (
     <div className="grid gap-6 md:grid-cols-[1fr_360px]">

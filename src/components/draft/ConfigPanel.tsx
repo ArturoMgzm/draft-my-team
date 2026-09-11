@@ -9,7 +9,6 @@ import {
   DEFAULT_CONFIG,
   computeMegaMax,
   computeOverCapacity,
-  customPoolIncomplete,
 } from "@/lib/draft-engine";
 import { useEffect, useState } from "react";
 
@@ -39,8 +38,6 @@ export function ConfigPanel({
   const totalNeeded = cfg.players * 6 + cfg.extras;
   const megaMax = computeMegaMax(cfg, totalNeeded);
   const overCapacity = computeOverCapacity(cfg);
-  // Starting with a half-filled custom pool would leave the draft unfinishable.
-  const poolIncomplete = customPoolIncomplete(cfg);
   const isAuction = multiplayer && (cfg.draftMode ?? "standard") === "auction";
 
   useEffect(() => {
@@ -250,15 +247,20 @@ export function ConfigPanel({
         </div>
       )}
 
-      {/* Custom pool: hand-pick the exact mons instead of rolling randomly.
-          Order is still shuffled at draft start. Available in all modes. */}
+      {/* Curated pool: ban mons out of the roll, guarantee others in, and
+          let the rest roll randomly. Order is always shuffled at draft
+          start. Available in all modes. */}
       <div className="rounded-xl border border-border bg-card/50 p-3">
         <ToggleField
           label="Pool selection"
           value={cfg.useCustomPool ? "custom" : "random"}
           options={[
             { value: "random", label: "Random roll", hint: "Auto-pick the pool for you" },
-            { value: "custom", label: "Custom 🎯", hint: "Hand-pick every mon in the pool" },
+            {
+              value: "custom",
+              label: "Curated 🎯",
+              hint: "Ban or guarantee mons, randomize the rest",
+            },
           ]}
           onChange={(v) => setCfg((c) => ({ ...c, useCustomPool: v === "custom" }))}
         />
@@ -272,11 +274,11 @@ export function ConfigPanel({
       {!hideStart && onStart && (
         <button
           onClick={onStart}
-          disabled={overCapacity || poolIncomplete || !!startDisabledReason}
+          disabled={overCapacity || !!startDisabledReason}
           title={startDisabledReason ?? undefined}
           className="h-12 w-full rounded-xl bg-primary px-6 text-sm font-bold uppercase tracking-wider text-primary-foreground shadow-md transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {startDisabledReason ?? (poolIncomplete ? "Custom pool incomplete" : startLabel)}
+          {startDisabledReason ?? startLabel}
         </button>
       )}
     </section>
