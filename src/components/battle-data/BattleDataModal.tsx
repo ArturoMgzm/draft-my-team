@@ -26,6 +26,7 @@ import {
   matchAbilitySlug,
   matchItemName,
   matchMoveSlug,
+  missingTopMoves,
   USAGE_RANK_NOTE,
   type BattleData,
   type BattleFormat,
@@ -295,10 +296,42 @@ export function BattleDataModal({
   const topSet = useMemo(
     () =>
       data
-        ? buildTopSet(data, moveSlugs, abilitySlugs, apply?.itemGroups ?? [], acceptsMoves)
+        ? buildTopSet(
+            data,
+            moveSlugs,
+            abilitySlugs,
+            apply?.itemGroups ?? [],
+            acceptsMoves,
+            isMegaSlug(slug),
+          )
         : null,
-    [data, moveSlugs, abilitySlugs, apply?.itemGroups, acceptsMoves],
+    [data, moveSlugs, abilitySlugs, apply?.itemGroups, acceptsMoves, slug],
   );
+
+  const missingMoves = data ? missingTopMoves(data) : 0;
+  const otherFormat: BattleFormat = format === "Doubles" ? "Singles" : "Doubles";
+
+  // The move-list truncation is per format, and the two rarely coincide: of
+  // the 35 Pokémon truncated in Doubles, 33 have a complete Singles list
+  // (only Manectric and Vivillon are short in both). So when this format is
+  // short, check the other one — it usually has the full picture. This only
+  // offers a switch; the lists are NOT interchangeable, since move usage
+  // differs sharply by format (Garchomp's top Doubles move is Rock Slide at
+  // 83%, its top Singles move is Earthquake at 99%).
+  const [otherHasFullList, setOtherHasFullList] = useState(false);
+  useEffect(() => {
+    if (!open || missingMoves === 0) {
+      setOtherHasFullList(false);
+      return;
+    }
+    let alive = true;
+    void fetchBattleData(slug, otherFormat).then((d) => {
+      if (alive) setOtherHasFullList(d !== null && missingTopMoves(d) === 0);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, slug, otherFormat, missingMoves]);
 
   if (!open || typeof document === "undefined") return null;
 
@@ -368,7 +401,7 @@ export function BattleDataModal({
     // Name what actually landed rather than a blanket "applied" — parts are
     // legitimately skipped (a Mega reading its base species' rows gets no
     // ability or item), and silently dropping them would be misleading.
-    setApplied(`${describePatch(topSet)} → ${apply.label}`);
+    setApplied(`${describePatch(topSet, missingMoves)} → ${apply.label}`);
   }
 
   const megaFallback =
@@ -494,9 +527,34 @@ export function BattleDataModal({
                 <p className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-[11px] text-muted-foreground">
                   Megas have no separate entry upstream — these are{" "}
                   <span className="font-semibold text-foreground">{data.pokemon}</span>&apos;s rows,
-                  so move and spread percentages are split across every Mega and base set and read
-                  low. The Mega Stone percentages under Held items show how often each Mega is
-                  actually run.
+                  covering both the base form and every Mega. The Mega Stone percentages under Held
+                  items show how often each Mega is actually run.
+                </p>
+              )}
+
+              {missingMoves > 0 && (
+                <p className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    Upstream is missing this Pokémon&apos;s top {missingMoves} move
+                    {missingMoves === 1 ? "" : "s"}
+                  </span>{" "}
+                  — the move list below starts at #{missingMoves + 1}, so what you see are the{" "}
+                  {data.moves.length} next-most-used moves, not the most-used ones. Every other
+                  section is complete.
+                  {otherHasFullList && (
+                    <>
+                      {" "}
+                      {otherFormat} has the full list for this Pokémon — a different metagame, but
+                      worth a look.{" "}
+                      <button
+                        type="button"
+                        onClick={() => setFormat(otherFormat)}
+                        className="font-semibold text-accent underline hover:brightness-110"
+                      >
+                        View {otherFormat} →
+                      </button>
+                    </>
+                  )}
                 </p>
               )}
 
@@ -580,7 +638,10 @@ export function BattleDataModal({
               </SectionCard>
 
               <div className="grid gap-3 lg:grid-cols-2">
-                <SectionCard title="Moves">
+                <SectionCard
+                  title="Moves"
+                  hint={missingMoves > 0 ? `top ${missingMoves} missing upstream` : undefined}
+                >
                   {data.moves.length === 0 ? (
                     <EmptyRow what="move" />
                   ) : (
@@ -771,16 +832,24 @@ function formatSpread(sp: SpAlloc): string {
  * the calc's own pickers can actually hold.
  */
 /** Human-readable list of the parts a patch actually carries. */
-function describePatch(patch: BattleDataPatch): string {
+function describePatch(patch: BattleDataPatch, missingMoves: number): string {
   const parts: string[] = [];
   if (patch.sp) parts.push("spread");
   if (patch.nature) parts.push("nature");
   if (patch.ability) parts.push("ability");
   if (patch.item) parts.push("item");
   const moveCount = patch.moves?.filter(Boolean).length ?? 0;
-  if (moveCount > 0) parts.push(`${moveCount} move${moveCount === 1 ? "" : "s"}`);
+  if (moveCount > 0) {
+    // Say it here too: the banner explains the gap, but this is the moment
+    // someone is actually acting on moves that aren't the real top ones.
+    const caveat = missingMoves > 0 ? ` (not the top ${missingMoves} — missing upstream)` : "";
+    parts.push(`${moveCount} move${moveCount === 1 ? "" : "s"}${caveat}`);
+  }
   return parts.length > 0 ? parts.join(", ") : "nothing applicable";
 }
+
+/** Below this share, no held item is common enough to call it the meta one. */
+const MIN_CONSENSUS_ITEM_PERCENT = 5;
 
 function buildTopSet(
   data: BattleData,
@@ -788,6 +857,7 @@ function buildTopSet(
   abilitySlugs: string[],
   itemGroups: ItemGroup[],
   includeMoves: boolean,
+  isMega: boolean,
 ): BattleDataPatch {
   const patch: BattleDataPatch = {};
 
@@ -799,15 +869,19 @@ function buildTopSet(
     if (ability) patch.ability = ability;
   }
 
-  // When the #1 item is a Mega Stone, this Pokémon essentially always Mega
-  // Evolves and has no meaningful held item — everything below the stone is
-  // noise (Charizard's top non-stone item is Choice Scarf at 0.2%). Picking
-  // that up would put a fabricated item on the calc, so no item is set at
-  // all; the stone itself is applied by choosing the Mega form.
-  const topItem = data.items[0];
-  if (topItem && !isMegaStone(topItem.name)) {
-    const item = matchItemName(topItem.name, itemGroups);
-    if (item) patch.item = item;
+  // A Mega's held item is its stone, which is applied implicitly by choosing
+  // the Mega form, so a Mega target never gets one. For a base form, the
+  // stone rows are skipped and the top real held item is used — but only if
+  // a meaningful share of sets actually runs it. Below that, there is no
+  // consensus item and picking the top of the tail would fabricate one
+  // (93.5% of Charizard hold Charizardite Y; the best non-stone item under
+  // it is Choice Scarf at 0.2%).
+  if (!isMega) {
+    const topItem = data.items.find((i) => !isMegaStone(i.name));
+    if (topItem && (topItem.percent ?? 0) >= MIN_CONSENSUS_ITEM_PERCENT) {
+      const item = matchItemName(topItem.name, itemGroups);
+      if (item) patch.item = item;
+    }
   }
 
   if (includeMoves) {

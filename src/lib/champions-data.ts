@@ -145,6 +145,23 @@ export function isMegaSlug(slug: string): boolean {
   return MEGA_SUFFIX_RE.test(slug);
 }
 
+/**
+ * How many top moves are missing from the upstream rows, or 0 when the list
+ * is complete.
+ *
+ * The source CSVs drop the first block of move rows for a minority of
+ * Pokémon — their move list simply begins at rank 6 with five rows instead
+ * of ten (Castform, Charizard, Gengar, Grimmsnarl...), while every other
+ * category for the same Pokémon still starts at rank 1. Measured against
+ * the live API: 35 of 235 Pokémon in Doubles and 13 of 235 in Singles.
+ * Nothing on our side can recover the missing rows, so callers surface the
+ * gap rather than presenting rank 6 as if it were the most-used move.
+ */
+export function missingTopMoves(data: BattleData): number {
+  const first = data.moves[0];
+  return first && first.rank > 1 ? first.rank - 1 : 0;
+}
+
 // ---- Cache --------------------------------------------------------------
 
 type CacheEntry = { t: number; v: BattleData | null };
