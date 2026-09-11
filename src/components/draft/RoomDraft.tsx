@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { applyRoomAction, type RoomPlayerRow, type RoomRow } from "@/lib/room-client";
-import { nextPlayerIndex, rollPool, type DraftEntry } from "@/lib/draft-engine";
+import { nextPlayerIndex, makePool, type DraftEntry } from "@/lib/draft-engine";
 import { TeamsSidebar } from "./TeamsSidebar";
 import { PoolGrid } from "./PoolGrid";
 import { ResultsGrid } from "./ResultsGrid";
@@ -105,7 +105,7 @@ export function RoomDraft({
   async function hostRedraft() {
     if (!isHost) return;
     if (!confirm("Re-roll the pool and keep current players?")) return;
-    const pool = rollPool(room.config);
+    const pool = makePool(room.config);
     try {
       await applyRoomAction(room.code, selfId, { type: "redraft", pool });
       if (pool.some((e) => e.shiny)) playShinyChime();

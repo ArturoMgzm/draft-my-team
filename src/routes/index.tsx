@@ -5,7 +5,7 @@ import {
   DEFAULT_CONFIG,
   type DraftEntry,
   nextPlayerIndex,
-  rollPool,
+  makePool,
 } from "@/lib/draft-engine";
 import { playShinyChime } from "@/lib/shiny-sound";
 import { isSoundMuted, setSoundMuted } from "@/lib/sound-prefs";
@@ -340,7 +340,7 @@ function SoloDraft({ onExit }: { onExit: () => void }) {
   const draftComplete = picks.length >= totalSlots;
 
   function startDraft() {
-    const rolled = rollPool(cfg);
+    const rolled = makePool(cfg);
     setPool(rolled);
     setPicks([]);
     setManualPlayer(null);

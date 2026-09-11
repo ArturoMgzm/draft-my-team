@@ -9,6 +9,7 @@ import {
   DEFAULT_CONFIG,
   computeMegaMax,
   computeOverCapacity,
+  customPoolIncomplete,
 } from "@/lib/draft-engine";
 import { useEffect, useState } from "react";
 
@@ -38,6 +39,8 @@ export function ConfigPanel({
   const totalNeeded = cfg.players * 6 + cfg.extras;
   const megaMax = computeMegaMax(cfg, totalNeeded);
   const overCapacity = computeOverCapacity(cfg);
+  // Starting with a half-filled custom pool would leave the draft unfinishable.
+  const poolIncomplete = customPoolIncomplete(cfg);
   const isAuction = multiplayer && (cfg.draftMode ?? "standard") === "auction";
 
   useEffect(() => {
@@ -269,11 +272,11 @@ export function ConfigPanel({
       {!hideStart && onStart && (
         <button
           onClick={onStart}
-          disabled={overCapacity || !!startDisabledReason}
+          disabled={overCapacity || poolIncomplete || !!startDisabledReason}
           title={startDisabledReason ?? undefined}
           className="h-12 w-full rounded-xl bg-primary px-6 text-sm font-bold uppercase tracking-wider text-primary-foreground shadow-md transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {startDisabledReason ?? startLabel}
+          {startDisabledReason ?? (poolIncomplete ? "Custom pool incomplete" : startLabel)}
         </button>
       )}
     </section>

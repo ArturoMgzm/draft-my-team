@@ -215,6 +215,21 @@ export function buildCustomPool(cfg: Config): DraftEntry[] {
   return shuffle(chosen);
 }
 
+// The single entry point every "start the draft" path uses to build a pool:
+// the hand-picked custom pool when custom-pool mode is on, a fresh random
+// roll otherwise. Going through here is what keeps a host's hand-picked
+// selection from being silently replaced by a random roll at start.
+export function makePool(cfg: Config): DraftEntry[] {
+  return cfg.useCustomPool ? buildCustomPool(cfg) : rollPool(cfg);
+}
+
+// True when custom-pool mode is on but fewer mons are picked than the draft
+// needs — starting then would leave the draft impossible to finish.
+export function customPoolIncomplete(cfg: Config): boolean {
+  if (!cfg.useCustomPool) return false;
+  return (cfg.customPool?.length ?? 0) < cfg.players * 6 + cfg.extras;
+}
+
 // Every viewable form for an entry, base form first. For non-mega/non-multi
 // entries this is just the single base slug. Used to drive the click-to-flip
 // form switcher on PoolCard; drafting always uses entry.id regardless of
