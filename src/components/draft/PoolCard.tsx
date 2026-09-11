@@ -1,18 +1,13 @@
 import { useEffect, useState } from "react";
 import { fetchPokemon, type PokemonData } from "@/lib/pokeapi";
 import { getFormOptions, getFormSlugs, type DraftEntry } from "@/lib/draft-engine";
+import { BattleDataModal } from "@/components/battle-data/BattleDataModal";
 import { HoverSprite } from "./HoverSprite";
+import { TypeBadge } from "./TypeBadge";
 
-export function TypeBadge({ type }: { type: string }) {
-  return (
-    <span
-      className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white"
-      style={{ backgroundColor: `var(--type-${type}, var(--muted))` }}
-    >
-      {type}
-    </span>
-  );
-}
+// Re-exported for the several components that have always imported it from
+// here; the component itself now lives in ./TypeBadge.
+export { TypeBadge };
 
 // Traditional competitive stat abbreviations, in standard display order.
 const STAT_ROWS: { key: keyof PokemonData["stats"]; label: string }[] = [
@@ -97,6 +92,7 @@ export function PoolCard({
   const isDisabled = pickable && !!disabled;
 
   const [flipped, setFlipped] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   const [dataBySlug, setDataBySlug] = useState<Map<string, PokemonData | null>>(() => new Map());
 
   useEffect(() => {
@@ -176,6 +172,25 @@ export function PoolCard({
           ✨
         </span>
       )}
+
+      {/* Ladder data for the form currently being viewed. Also in the badge
+          layer, so opening it can never register as a pick. */}
+      <button
+        type="button"
+        onClick={() => setDataOpen(true)}
+        title={`Champions ladder data for ${displayName}`}
+        aria-label={`Champions ladder data for ${displayName}`}
+        className="absolute bottom-1.5 left-1.5 z-10 rounded-full border border-border bg-card/80 px-1.5 py-0.5 text-[10px] leading-none opacity-50 transition hover:border-accent hover:opacity-100 focus:opacity-100"
+      >
+        📊
+      </button>
+
+      <BattleDataModal
+        open={dataOpen}
+        onClose={() => setDataOpen(false)}
+        slug={activeSlug}
+        name={displayName}
+      />
 
       {/* Pick + flip surface. Sits beneath the badge layer (z-0) and never
           contains the badge buttons, so badge clicks can't bubble into it. */}

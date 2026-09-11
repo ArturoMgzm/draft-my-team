@@ -47,6 +47,11 @@ import {
 } from "@/components/ui/select";
 import { type ItemGroup } from "@/lib/champions-items";
 import { getRegulation, DEFAULT_REGULATION_ID } from "@/lib/regulations/registry";
+import {
+  BattleDataModal,
+  type BattleDataPatch,
+} from "@/components/battle-data/BattleDataModal";
+import type { BattleFormat } from "@/lib/champions-data";
 
 type SideKey = "atk" | "def";
 
@@ -66,6 +71,11 @@ type SideDraft = {
   /** In-battle stat stages, -6 to +6 (e.g. Swords Dance = { atk: 2 }). */
   boosts: BoostAlloc;
   moves: string[]; // 4 slots, slug or ""
+  /** Bumped whenever `nature` is written from outside the NaturePicker (a
+   * loaded meta set, or a side swap). NaturePicker deliberately keeps its
+   * own +/- state and only re-reads `nature` when remounted, so this rides
+   * in its `key` — see the comment on NaturePicker. */
+  natureRev: number;
 };
 
 const EMPTY_SIDE: SideDraft = {
@@ -78,6 +88,7 @@ const EMPTY_SIDE: SideDraft = {
   sp: { ...ZERO_SP },
   boosts: { ...ZERO_BOOSTS },
   moves: ["", "", "", ""],
+  natureRev: 0,
 };
 
 // One distinct color per stat, pulled entirely from the existing design
@@ -162,8 +173,12 @@ export function CalcSidebar({
             {mode === "calc" && (
               <button
                 onClick={() => {
-                  setAtk(def);
-                  setDef(atk);
+                  // Bump both natureRevs so each NaturePicker remounts and
+                  // re-reads the nature it just received — without this, two
+                  // sides holding the same species would keep their old +/-
+                  // buttons lit after the swap.
+                  setAtk({ ...def, natureRev: def.natureRev + 1 });
+                  setDef({ ...atk, natureRev: atk.natureRev + 1 });
                 }}
                 className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium hover:border-accent hover:text-accent"
                 title="Swap attacker and defender"
@@ -207,8 +222,22 @@ export function CalcSidebar({
 
         {mode === "calc" ? (
           <div className="space-y-4 p-4">
-            <SideCard title="Attacker" side="atk" pool={pool} state={atk} setState={setAtk} />
-            <SideCard title="Defender" side="def" pool={pool} state={def} setState={setDef} />
+            <SideCard
+              title="Attacker"
+              side="atk"
+              pool={pool}
+              state={atk}
+              setState={setAtk}
+              gameType={field.gameType}
+            />
+            <SideCard
+              title="Defender"
+              side="def"
+              pool={pool}
+              state={def}
+              setState={setDef}
+              gameType={field.gameType}
+            />
             <FieldPanel field={field} setField={setField} />
             <Results attacker={atk} defender={def} field={field} pool={pool} />
             <p className="text-[10px] leading-relaxed text-muted-foreground">
@@ -397,18 +426,37 @@ function SideCard({
   pool,
   state,
   setState,
+  gameType,
 }: {
   title: string;
   side: SideKey;
   pool: DraftEntry[];
   state: SideDraft;
   setState: (updater: (s: SideDraft) => SideDraft) => void;
+  /** Drives which format's ladder data the meta-set modal opens on. */
+  gameType: FieldConfig["gameType"];
 }) {
   const accent = SIDE_ACCENT[side];
   const entry = pool.find((e) => e.id === state.entryId) ?? null;
   const formOptions = useMemo(() => (entry ? getFormOptions(entry) : []), [entry]);
   const activeForm = formOptions[Math.min(state.formIdx, formOptions.length - 1)] ?? null;
   const data = usePokemonData(activeForm?.slug);
+  const itemGroups = useContext(ItemsContext);
+  const [metaOpen, setMetaOpen] = useState(false);
+
+  // Applies whichever fields a person clicked in the ladder-data modal.
+  // Absent fields are left exactly as they are, so clicking a single spread
+  // doesn't wipe the moves or item already set up on this side.
+  function applyMetaPatch(patch: BattleDataPatch) {
+    setState((s) => ({
+      ...s,
+      ...(patch.sp ? { sp: patch.sp } : {}),
+      ...(patch.item !== undefined ? { item: patch.item } : {}),
+      ...(patch.ability !== undefined ? { ability: patch.ability } : {}),
+      ...(patch.moves ? { moves: patch.moves } : {}),
+      ...(patch.nature ? { nature: patch.nature, natureRev: s.natureRev + 1 } : {}),
+    }));
+  }
 
   // NOTE: species/form changes intentionally do NOT reset dependent fields
   // via an effect keyed on state.entryId/formIdx — that used to fire on
@@ -434,16 +482,46 @@ function SideCard({
             {title}
           </span>
         </div>
-        {data && (
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            {data.types.map((t) => (
-              <span key={t} className="rounded bg-secondary px-1.5 py-0.5 capitalize">
-                {t}
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-1.5">
+          {entry && activeForm && (
+            <button
+              type="button"
+              onClick={() => setMetaOpen(true)}
+              title={`Load a real ladder set onto ${title}`}
+              className="rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-semibold hover:border-accent hover:text-accent"
+            >
+              📊 Meta sets
+            </button>
+          )}
+          {data && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              {data.types.map((t) => (
+                <span key={t} className="rounded bg-secondary px-1.5 py-0.5 capitalize">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {activeForm && (
+        <BattleDataModal
+          open={metaOpen}
+          onClose={() => setMetaOpen(false)}
+          slug={activeForm.slug}
+          name={activeForm.name}
+          defaultFormat={gameType as BattleFormat}
+          apply={{
+            label: title,
+            itemGroups,
+            currentMoves: state.moves,
+            // Only the attacker has move slots in this calc.
+            acceptsMoves: side === "atk",
+            onApply: applyMetaPatch,
+          }}
+        />
+      )}
 
       <div className="flex gap-2">
         {data?.sprite && (
@@ -538,7 +616,7 @@ function SideCard({
 
       {entry && (
         <NaturePicker
-          key={state.entryId}
+          key={`${state.entryId}:${state.natureRev}`}
           value={state.nature}
           onChange={(v) => setState((s) => ({ ...s, nature: v }))}
         />
